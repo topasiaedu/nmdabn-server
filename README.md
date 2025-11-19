@@ -1,17 +1,19 @@
 # NMDABN Main Backend Server
 
-Main backend server that orchestrates integration microservices for Zoom, VAPI, and Google Sheets.
+Webinar management platform with AI-powered analytics - Main backend server that orchestrates integration microservices.
 
 > **📚 [Documentation Index](docs/README.md)** | **🌐 [System Architecture](docs/system/ARCHITECTURE.md)** | **🚀 [Quick Start](docs/server/QUICKSTART.md)** | **📖 [API Reference](docs/server/API_REFERENCE.md)**
 
 ## Overview
 
-This is the **main backend (orchestrator/brain)** that:
+This is the **main backend (orchestrator/brain)** for a webinar management platform that:
 - Exposes all public APIs for the frontend
 - Handles authentication and workspace scoping
 - Creates integration jobs for microservices to execute
 - Processes webhooks from external providers
 - Manages business logic and workflows
+
+**Future:** AI-powered chatbot for natural language analytics queries
 
 ## Tech Stack
 
@@ -19,7 +21,11 @@ This is the **main backend (orchestrator/brain)** that:
 - **Framework**: Express.js
 - **Database**: Supabase (PostgreSQL)
 - **Authentication**: Supabase Auth (JWT-based)
-- **Integrations**: Google Sheets, Zoom, VAPI
+- **Integrations**: 
+  - ✅ Google Sheets (OAuth)
+  - ✅ Zoom (Server-to-Server OAuth)
+  - 🔄 VAPI (Planned)
+  - 🔄 GoHighLevel (Planned)
 
 ## Prerequisites
 
@@ -261,12 +267,17 @@ src/
 └── index.ts                # Express app entry point
 ```
 
-## Multi-Tenancy
+## Multi-Tenancy & Projects
 
-All operations are scoped to workspaces:
+All operations are scoped to workspaces and projects:
+- **Workspaces** represent companies/tenants
+- **Projects** represent campaigns/funnels within a workspace
 - Users belong to one or more workspaces via `workspace_members` table
 - All data is isolated by `workspace_id`
+- Domain tables include `project_id` for campaign-level analytics
 - Middleware validates workspace access on every request
+
+**Critical for AI Chatbot:** All domain tables must have `project_id` to enable project-level analytics queries.
 
 ## Security Considerations
 
@@ -310,7 +321,9 @@ Documentation is organized into **System-Wide** (applies to all services) and **
 ### 🌐 System-Wide Documentation
 - **[System Overview](docs/system/OVERVIEW.md)** - High-level architecture (all services)
 - **[System Architecture](docs/system/ARCHITECTURE.md)** - Detailed technical specs (all services)
+- **[Database Schema](docs/system/DATABASE_SCHEMA.md)** - Complete database schema reference
 - **[Integration Setup](docs/system/INTEGRATION_SETUP.md)** - How integrations work
+- **[AI Chatbot Implementation](docs/system/AI_CHATBOT_IMPLEMENTATION.md)** - AI chatbot guide (planned feature)
 
 ### 🖥️ Main Backend Server Documentation
 - **[Quick Start](docs/server/QUICKSTART.md)** - Get this server running in 5 minutes
@@ -321,7 +334,57 @@ Documentation is organized into **System-Wide** (applies to all services) and **
 
 ### 📚 Reference
 - **[Changelog](docs/reference/CHANGELOG.md)** - Version history
+- **[Implementation Summary](docs/reference/IMPLEMENTATION.md)** - What was built
 - **[Documentation Index](docs/README.md)** - Complete documentation guide
+
+---
+
+## 🚀 Future Roadmap
+
+### Phase 1: Complete Current Integrations (In Progress)
+- ✅ Zoom integration (meetings, webinars, attendees, recordings)
+- ✅ Google Sheets integration (OAuth, sync)
+- ✅ Projects support
+- 🔄 VAPI integration (AI phone calls)
+- 🔄 GoHighLevel integration (CRM sync)
+
+### Phase 2: Analytics Infrastructure (Planned)
+- Add `project_id` to all domain tables
+- Create `project_metrics` table for pre-aggregated data
+- Build analytics service for nightly aggregation
+- Create `activity_log` table for event tracking
+- Implement trend detection and anomaly detection
+
+### Phase 3: AI Chatbot (Planned)
+- Natural language to SQL query generation
+- Read-only query execution with security validation
+- Workspace isolation enforcement
+- Query result caching (Redis)
+- Chart generation from query results
+- Proactive insights and recommendations
+
+### Phase 4: Advanced Features (Future)
+- Data warehouse integration (BigQuery/Snowflake)
+- Advanced ML models for predictions
+- Custom integration builder
+- White-label support
+- Advanced reporting and dashboards
+
+---
+
+## 🎯 Use Case
+
+This platform is designed for **webinar management companies** that need to:
+- Manage multiple webinar campaigns across different clients
+- Track attendance, engagement, and conversions
+- Integrate with Zoom, VAPI, Google Sheets, and CRMs
+- Provide AI-powered analytics to answer questions like:
+  - "How is our Q1 campaign performing?"
+  - "Which webinar had the best attendance rate?"
+  - "Show me all calls made this week"
+  - "What's the conversion rate for the Product Launch project?"
+
+---
 
 ## License
 

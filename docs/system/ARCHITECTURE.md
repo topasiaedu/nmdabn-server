@@ -11,7 +11,9 @@ This document explains the core structure of our microservices system so that **
 - [3. Integrations Overview](#3-integrations-overview)
 - [4. Service Responsibilities](#4-service-responsibilities)
 - [5. Analytics & Projects](#5-analytics--projects)
-- [6. Key Principles](#6-key-principles)
+- [6. AI Chatbot Architecture](#6-ai-chatbot-architecture)
+- [7. Key Principles](#7-key-principles)
+- [8. Future Enhancements](#8-future-enhancements)
 
 ---
 
@@ -62,13 +64,26 @@ Table: `projects` (conceptual):
 
 ### Domain Tables Structure
 
-Key domain tables (like `leads`, `webinars`, `webinar_registrations`, etc.) should have:
-- `workspace_id` (required)
-- `project_id` (nullable if needed)
+**CRITICAL:** All domain tables MUST have both:
+- `workspace_id` (uuid, required) - For multi-tenant isolation
+- `project_id` (uuid, nullable) - For campaign/project-level analytics
 
-This allows analytics like:
-- Performance **per project** (per webinar/funnel)
-- Performance **per workspace** (aggregate across projects)
+**Examples of domain tables that need `project_id`:**
+- `contacts` - Which campaign did this lead come from?
+- `zoom_meetings` - Which project is this webinar part of?
+- `zoom_webinars` - Which campaign is this webinar for?
+- `zoom_attendees` - Track attendance per project
+- `zoom_registrants` - Track registrations per project
+- `vapi_calls` - Which campaign generated this call?
+- `ghl_contacts` - Which project synced this contact?
+
+**Why this is critical:**
+- Enables project-level analytics ("How is Q1 campaign performing?")
+- Allows AI chatbot to answer project-specific questions
+- Supports workspace-wide rollups (aggregate across all projects)
+- Essential for proper data organization in multi-campaign environments
+
+**Implementation Note:** Add `project_id` to ALL domain tables before production data, or retrofitting will be painful.
 
 ---
 
@@ -76,12 +91,17 @@ This allows analytics like:
 
 ### Supported Providers
 
-We support multiple integration providers:
-- `zoom`
-- `vapi`
-- `google_sheets`
-- `gohighlevel`
-- (more in the future)
+**Current Status:**
+- ✅ `zoom` - Implemented (meetings, webinars, attendees, recordings)
+- ✅ `google_sheets` - Implemented (OAuth, sync)
+- 🔄 `vapi` - Planned (AI phone calls)
+- 🔄 `gohighlevel` - Planned (CRM integration)
+
+**Future:**
+- Calendly
+- HubSpot
+- Salesforce
+- Custom webhooks
 
 ### Core Integration Tables
 
@@ -306,7 +326,245 @@ The `projects` layer prevents analytics from becoming "one big soup" inside a wo
 
 ---
 
-## 6. Key Principles
+## 6. AI Chatbot Architecture
+
+### Overview
+
+The system will include an AI-powered chatbot that allows users to query their data using natural language. Users can ask questions like:
+- "How many webinars did we run last month?"
+- "What's the attendance rate for Q1 campaign?"
+- "Show me all calls made this week"
+- "Which project has the best conversion rate?"
+
+### Architecture Pattern
+
+The AI chatbot operates as a **separate microservice** that:
+1. Receives natural language questions from the frontend
+2. Generates SQL queries to answer questions
+3. Executes queries against the database (read-only)
+4. Formats and returns results to the user
+
+### AI Chatbot Service Components
+
+```
+ai-chatbot-service/
+├── query-engine/
+│   ├── sql-generator.ts       # Convert questions to SQL using LLM
+│   ├── sql-validator.ts       # Validate queries for safety
+│   ├── query-executor.ts      # Execute queries with limits
+│   └── result-formatter.ts    # Format results for display
+├── context/
+│   ├── workspace-context.ts   # Load workspace schema/data
+│   ├── project-context.ts     # Load project information
+│   └── conversation-context.ts # Manage chat history
+├── security/
+│   ├── workspace-isolation.ts # Enforce workspace_id filtering
+│   ├── query-limits.ts        # Rate limiting, timeouts
+│   └── sensitive-data.ts      # Block access to credentials
+└── index.ts
+```
+
+### Security Model
+
+**Critical Security Requirements:**
+
+1. **Read-Only Database Access**
+```sql
+-- Create dedicated read-only user for AI
+CREATE USER ai_chatbot WITH PASSWORD 'secure_password';
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO ai_chatbot;
+
+-- Revoke access to sensitive tables
+REVOKE SELECT ON integration_accounts FROM ai_chatbot;
+REVOKE SELECT ON workspace_members FROM ai_chatbot;
+```
+
+2. **Workspace Isolation Enforcement**
+- Every query MUST include `WHERE workspace_id = $1`
+- SQL validator parses and verifies workspace_id filter
+- Queries without workspace filter are rejected
+
+3. **Query Validation**
+- Only SELECT statements allowed (no INSERT, UPDATE, DELETE)
+- Automatic LIMIT 1000 added if not present
+- Query timeout: 5 seconds maximum
+- No access to sensitive tables (integration_accounts, etc.)
+
+4. **Database Views for Safety**
+```sql
+-- Create safe views that auto-filter by workspace
+CREATE VIEW ai_webinars AS
+SELECT id, workspace_id, project_id, topic, start_time, duration, status
+FROM zoom_webinars
+WHERE workspace_id = current_setting('app.current_workspace_id')::uuid;
+
+-- AI queries views, not raw tables
+```
+
+### Query Flow
+
+```
+User: "How many webinars last month?"
+  ↓
+Frontend → AI Chatbot Service
+  ↓
+1. Load workspace context (schema, projects)
+  ↓
+2. Generate SQL using LLM
+   SELECT COUNT(*) FROM zoom_webinars 
+   WHERE workspace_id = $1 
+   AND start_time >= '2024-10-01' 
+   AND start_time < '2024-11-01'
+  ↓
+3. Validate SQL (workspace_id present, no sensitive tables)
+  ↓
+4. Execute query (read-only user, 5s timeout, LIMIT 1000)
+  ↓
+5. Format results
+  ↓
+Frontend ← "You ran 42 webinars last month"
+```
+
+### Performance Optimization
+
+**Hybrid Approach:**
+
+1. **Tier 1: Pre-Computed Metrics** (Fast)
+   - Common questions use pre-aggregated `project_metrics` table
+   - Cached for 1 hour
+   - Examples: total webinars, average attendance, revenue
+
+2. **Tier 2: AI-Generated SQL** (Flexible)
+   - Complex questions generate SQL on-the-fly
+   - Validated and executed with safety limits
+   - Results cached for 5 minutes
+
+3. **Tier 3: Analytics Service** (Batch)
+   - Nightly aggregation of metrics
+   - Trend detection and anomaly detection
+   - Pre-computed insights
+
+### Required Database Tables
+
+**For AI Chatbot to function, these tables are needed:**
+
+1. **Chat History**
+```sql
+CREATE TABLE chat_conversations (
+  id UUID PRIMARY KEY,
+  workspace_id UUID NOT NULL,
+  user_id UUID NOT NULL,
+  project_id UUID, -- Optional: chat about specific project
+  title TEXT,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+);
+
+CREATE TABLE chat_messages (
+  id UUID PRIMARY KEY,
+  conversation_id UUID REFERENCES chat_conversations(id),
+  role TEXT, -- 'user' or 'assistant'
+  content TEXT,
+  metadata JSONB, -- Store SQL queries used, execution time, etc.
+  created_at TIMESTAMP
+);
+```
+
+2. **Project Metrics** (Optional but recommended)
+```sql
+CREATE TABLE project_metrics (
+  id UUID PRIMARY KEY,
+  project_id UUID REFERENCES projects(id),
+  workspace_id UUID NOT NULL,
+  date DATE NOT NULL,
+  
+  -- Webinar metrics
+  webinars_scheduled INTEGER DEFAULT 0,
+  webinars_completed INTEGER DEFAULT 0,
+  total_registrants INTEGER DEFAULT 0,
+  total_attendees INTEGER DEFAULT 0,
+  attendance_rate DECIMAL,
+  
+  -- Call metrics (when VAPI implemented)
+  calls_made INTEGER DEFAULT 0,
+  calls_answered INTEGER DEFAULT 0,
+  avg_call_duration INTEGER,
+  
+  -- Engagement
+  avg_watch_time INTEGER,
+  questions_asked INTEGER,
+  
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP,
+  
+  UNIQUE(project_id, date)
+);
+```
+
+3. **Activity Log** (Optional but recommended)
+```sql
+CREATE TABLE activity_log (
+  id UUID PRIMARY KEY,
+  workspace_id UUID NOT NULL,
+  project_id UUID,
+  user_id UUID,
+  
+  event_type TEXT, -- 'webinar_created', 'attendee_joined', 'call_completed'
+  entity_type TEXT, -- 'webinar', 'call', 'contact'
+  entity_id UUID,
+  
+  description TEXT,
+  metadata JSONB,
+  
+  created_at TIMESTAMP
+);
+
+CREATE INDEX idx_activity_log_project ON activity_log(project_id, created_at DESC);
+```
+
+### Implementation Phases
+
+**Phase 1: Foundation** (Before AI)
+- ✅ Add `project_id` to all domain tables
+- ✅ Create projects table (done)
+- 🔄 Add VAPI tables (when implementing VAPI)
+- 🔄 Add GoHighLevel tables (when implementing GHL)
+
+**Phase 2: Analytics Infrastructure**
+- Create `project_metrics` table
+- Build analytics service for nightly aggregation
+- Create `activity_log` table
+- Add database views for AI safety
+
+**Phase 3: AI Chatbot Service**
+- Build AI chatbot microservice
+- Implement SQL generation with LLM
+- Add SQL validation and safety checks
+- Create read-only database user
+- Build chat UI in frontend
+
+**Phase 4: Advanced Features**
+- Add caching layer (Redis)
+- Implement proactive insights
+- Add chart generation
+- Trend detection and anomaly alerts
+
+### Cost Considerations
+
+**LLM API Costs:**
+- Each question: ~3-5 LLM calls (understand → generate → format)
+- Cost per question: ~$0.02-0.05
+- 100 questions/day = $2-5/day = $60-150/month per active user
+
+**Optimization Strategies:**
+- Cache common queries (reduce LLM calls)
+- Use pre-computed metrics for common questions
+- Implement query result caching
+- Use cheaper models for simple questions
+
+---
+
+## 7. Key Principles
 
 ### 1. Workspace = Tenant / Company
 - Projects live inside a workspace, not as separate tenants
@@ -406,9 +664,133 @@ The `projects` layer prevents analytics from becoming "one big soup" inside a wo
 
 ---
 
+---
+
+## 8. Future Enhancements
+
+### Missing Tables (To Be Implemented)
+
+**VAPI Tables** (Priority: High)
+```sql
+-- VAPI calls
+CREATE TABLE vapi_calls (
+  id UUID PRIMARY KEY,
+  workspace_id UUID NOT NULL REFERENCES workspaces(id),
+  project_id UUID REFERENCES projects(id),
+  call_id TEXT UNIQUE,
+  phone_number TEXT,
+  assistant_id TEXT,
+  status TEXT, -- 'initiated', 'ringing', 'in_progress', 'completed', 'failed'
+  duration INTEGER, -- seconds
+  recording_url TEXT,
+  transcript TEXT,
+  metadata JSONB,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- VAPI call analytics
+CREATE TABLE vapi_call_analytics (
+  id UUID PRIMARY KEY,
+  call_id UUID REFERENCES vapi_calls(id),
+  workspace_id UUID NOT NULL,
+  sentiment_score DECIMAL,
+  keywords JSONB,
+  action_items JSONB,
+  summary TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+**GoHighLevel Tables** (Priority: High)
+```sql
+-- GHL contacts sync
+CREATE TABLE ghl_contacts (
+  id UUID PRIMARY KEY,
+  workspace_id UUID NOT NULL REFERENCES workspaces(id),
+  project_id UUID REFERENCES projects(id),
+  ghl_contact_id TEXT UNIQUE,
+  contact_id UUID REFERENCES contacts(id), -- Link to our contacts table
+  email TEXT,
+  phone TEXT,
+  tags JSONB,
+  custom_fields JSONB,
+  last_synced_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- GHL opportunities/pipeline
+CREATE TABLE ghl_opportunities (
+  id UUID PRIMARY KEY,
+  workspace_id UUID NOT NULL REFERENCES workspaces(id),
+  project_id UUID REFERENCES projects(id),
+  ghl_opportunity_id TEXT UNIQUE,
+  contact_id UUID REFERENCES contacts(id),
+  pipeline_id TEXT,
+  pipeline_stage TEXT,
+  value DECIMAL,
+  status TEXT,
+  metadata JSONB,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+### Planned Features
+
+**1. Analytics Service** (Priority: High)
+- Nightly aggregation of metrics into `project_metrics`
+- Trend detection (attendance dropping, engagement increasing)
+- Anomaly detection (unusual patterns)
+- Automated insights generation
+
+**2. AI Chatbot Service** (Priority: Medium)
+- Natural language to SQL conversion
+- Read-only query execution
+- Chart generation from data
+- Proactive insights and recommendations
+
+**3. Caching Layer** (Priority: Medium)
+- Redis for query result caching
+- Cache common metrics (1 hour TTL)
+- Cache AI responses (5 minute TTL)
+- Reduce database load and LLM costs
+
+**4. Data Warehouse** (Priority: Low - Future)
+- ETL pipeline from Supabase to BigQuery/Snowflake
+- Historical data analysis
+- ML model training
+- Complex analytics without impacting operational DB
+
+**5. Additional Integrations** (Priority: Low)
+- Calendly (scheduling)
+- HubSpot (CRM)
+- Salesforce (enterprise CRM)
+- Stripe (payments)
+- Custom webhooks
+
+### Scaling Considerations
+
+**Current Architecture Handles:**
+- ✅ 100-500 workspaces
+- ✅ 1,000 webinars/month
+- ✅ 10,000 attendees/month
+- ✅ 100 concurrent users
+
+**For Larger Scale, Add:**
+- Database read replicas (for analytics queries)
+- Connection pooling (PgBouncer)
+- CDN for static assets
+- Load balancer for multiple backend instances
+- Message queue (RabbitMQ/SQS) instead of Supabase Realtime
+- Separate analytics database
+
+---
+
 ## Related Documentation
 
 - [Main README](../README.md) - Getting started guide
 - [Integration Setup Guide](INTEGRATION_SETUP.md) - How to set up each provider
-- [API Examples](API_EXAMPLES.md) - API usage examples
+- [System Overview](OVERVIEW.md) - High-level system overview
 

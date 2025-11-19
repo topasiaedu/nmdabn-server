@@ -13,17 +13,29 @@ We have:
 - Handles authentication, workspace scoping, and business logic
 - Creates integration jobs for microservices
 - Manages webhooks from external providers
-- (Later) Runs AI/analytics flows
 
 ### Integration Microservices (MCS)
 
 One microservice for each provider:
-- **Zoom MCS**
-- **VAPI MCS**
-- **Google Sheets MCS**
-- **GoHighLevel MCS**
+- **Zoom MCS** ✅ (Implemented)
+- **VAPI MCS** 🔄 (Planned)
+- **Google Sheets MCS** ✅ (Implemented)
+- **GoHighLevel MCS** 🔄 (Planned)
 
 Each integration MCS only talks to its external provider and executes jobs.
+
+### AI Chatbot Service (Future)
+- Answers natural language questions about data
+- Generates SQL queries from user questions
+- Executes read-only queries with safety validation
+- Provides insights and analytics
+- Separate microservice for security and scalability
+
+### Analytics Service (Future)
+- Nightly aggregation of metrics
+- Trend detection and anomaly detection
+- Pre-computed insights for common questions
+- Feeds data to AI chatbot
 
 ### Supabase Postgres DB
 
@@ -196,15 +208,15 @@ Each MCS is responsible for a single provider.
 
 ---
 
-## Data Flow Example
+## Data Flow Examples
 
-### Example: User Creates a Lead and Exports to Google Sheets
+### Example 1: User Creates a Lead and Exports to Google Sheets
 
 ```
 ┌──────────┐
 │ Frontend │
 └────┬─────┘
-     │ 1. POST /api/leads (with workspace_id)
+     │ 1. POST /api/leads (with workspace_id, project_id)
      │
 ┌────▼──────────┐
 │ Main Backend  │
@@ -232,6 +244,41 @@ Each MCS is responsible for a single provider.
 │ Google Sheets    │
 │ (External API)   │
 └──────────────────┘
+```
+
+### Example 2: User Asks AI Chatbot a Question (Future)
+
+```
+┌──────────┐
+│ Frontend │
+└────┬─────┘
+     │ 1. "How many webinars did we run last month?"
+     │
+┌────▼──────────────┐
+│ AI Chatbot Service│
+└────┬──────────────┘
+     │ 2. Load workspace context
+     │ 3. Generate SQL query
+     │ 4. Validate query (workspace_id, read-only)
+     │
+┌────▼─────────────┐
+│ Supabase DB      │
+│ (Read-Only User) │
+└────┬─────────────┘
+     │ 5. Execute query
+     │ 6. Return results
+     │
+┌────▼──────────────┐
+│ AI Chatbot Service│
+└────┬──────────────┘
+     │ 7. Format results
+     │ 8. Generate insights
+     │
+┌────▼─────┐
+│ Frontend │
+└──────────┘
+     Display: "You ran 42 webinars last month.
+               Attendance rate: 68% (up 5% from previous month)"
 ```
 
 ---
@@ -282,8 +329,9 @@ Each MCS is responsible for a single provider.
 
 - **For Developers**: See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed technical specs
 - **For Setup**: See [INTEGRATION_SETUP.md](INTEGRATION_SETUP.md) for integration guides
-- **For API Usage**: See [API_EXAMPLES.md](API_EXAMPLES.md) for code examples
-- **For Deployment**: See [DEPLOYMENT.md](DEPLOYMENT.md) for production setup
+- **For API Usage**: See [../server/API_REFERENCE.md](../server/API_REFERENCE.md) for code examples
+- **For Deployment**: See [../server/DEPLOYMENT.md](../server/DEPLOYMENT.md) for production setup
+- **For AI Chatbot**: See [ARCHITECTURE.md#6-ai-chatbot-architecture](ARCHITECTURE.md#6-ai-chatbot-architecture) for AI implementation details
 
 ---
 
