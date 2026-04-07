@@ -1,4 +1,4 @@
-import type { Database } from '../../database.types';
+import type { Database } from "../database.types";
 
 // Database table types
 export type IntegrationAccount = Database['public']['Tables']['integration_accounts']['Row'];

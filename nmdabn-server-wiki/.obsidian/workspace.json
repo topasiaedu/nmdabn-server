@@ -1,0 +1,213 @@
+{
+  "main": {
+    "id": "bf7befb87bb8c2f5",
+    "type": "split",
+    "children": [
+      {
+        "id": "7e3040656e4fdc0b",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "de973b344a424a92",
+            "type": "leaf",
+            "state": {
+              "type": "graph",
+              "state": {},
+              "icon": "lucide-git-fork",
+              "title": "Graph view"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "1502abb24f3f8d00",
+    "type": "split",
+    "children": [
+      {
+        "id": "da2bd8c81aa4d1cb",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "f828c69789c27837",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "e4337b45841d6f07",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "2bf0b3c69f9712e9",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "08919a95577475ba",
+    "type": "split",
+    "children": [
+      {
+        "id": "3e0c6f206ddfc388",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "5a6dba5df9d008b6",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks"
+            }
+          },
+          {
+            "id": "8ac3626fba23b265",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links"
+            }
+          },
+          {
+            "id": "a5f320eb35c59876",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "4fdd6dcaaff1ed33",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "122cff0b9ffdfbbe",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "f828c69789c27837",
+  "lastOpenFiles": [
+    "concepts/GHL-Multi-Location-Architecture.md",
+    "concepts/GHL-Contacts-Sync-Reliability.md",
+    "sources/Multi-Location-GHL-Architecture-Recommendation.md",
+    "sources/GHL-Contacts-Sync-Pagination-And-Throughput-Fix.md",
+    "raw/sources/2026-04-07-agent-multi-location-ghl-architecture-recommendation.md",
+    "raw/sources/2026-04-07-agent-ghl-contacts-sync-pagination-and-throughput-fix.md",
+    "concepts/Documentation-Lineage.md",
+    "sources/Archive-Projects-And-Docs-Update.md",
+    "sources/Archive-Documentation-Update-Summary.md",
+    "sources/Archive-README.md",
+    "sources/Data-Sync-Principles.md",
+    "sources/Database-README.md",
+    "sources/Docs-README.md",
+    "raw/sources/2026-04-07-repo-archive-projects-and-docs-update.md",
+    "raw/sources/2026-04-07-repo-archive-documentation-update-summary.md",
+    "raw/sources/2026-04-07-repo-archive-readme.md",
+    "raw/sources/2026-04-07-repo-data-sync-principles.md",
+    "raw/sources/2026-04-07-repo-database-readme.md",
+    "raw/sources/2026-04-07-repo-docs-readme.md",
+    "entities/GoHighLevel.md",
+    "concepts/SQL-First-Data-Layer.md",
+    "concepts/GHL-Sync-Operations.md",
+    "concepts/Express-Raw-Webhook-Body.md",
+    "concepts/GHL-Webhook-Security.md",
+    "log.md",
+    "index.md",
+    "concepts",
+    "sources",
+    "raw/sources",
+    "raw",
+    "entities"
+  ]
+}

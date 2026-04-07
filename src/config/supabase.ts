@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { env } from './env';
-import type { Database } from '../../database.types';
+import type { Database } from "../database.types";
 
 // Service role client for backend operations
 export const supabase = createClient<Database>(

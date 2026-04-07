@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import { env } from './config/env';
+import { ghlWebhookHandler } from './routes/ghl-webhook';
 
 // Import routes
 import googleAuthRoutes from './routes/google-auth';
@@ -30,7 +31,14 @@ app.use(
   })
 );
 
-// Body parsing
+// GHL marketplace webhooks: signature is computed over the raw body; parse only this route as raw JSON.
+app.post(
+  '/api/webhooks/ghl',
+  express.raw({ type: '*/*', limit: '10mb' }),
+  ghlWebhookHandler
+);
+
+// Body parsing (must run after the raw GHL route above)
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -128,6 +136,9 @@ app.listen(PORT, () => {
   console.log('  POST   /api/webhooks/vapi');
   console.log('  POST   /api/webhooks/google-sheets');
   console.log('  POST   /api/webhooks/test');
+  if (env.ghl !== undefined) {
+    console.log('  POST   /api/webhooks/ghl  (GoHighLevel — contact mirror sync)');
+  }
   console.log('='.repeat(60));
 });
 
