@@ -1,3 +1,4 @@
+import type { Request } from "express";
 import type { Database } from "../database.types";
 
 // Database table types
@@ -18,7 +19,7 @@ export type IntegrationProvider = Database['public']['Enums']['integration_provi
 export type IntegrationJobStatus = Database['public']['Enums']['integration_job_status'];
 
 // Request types with authenticated user context
-export interface AuthenticatedRequest extends Express.Request {
+export interface AuthenticatedRequest extends Request {
   user?: {
     id: string;
     email: string;

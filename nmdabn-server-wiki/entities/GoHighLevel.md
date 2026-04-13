@@ -17,6 +17,8 @@
 - [[GHL-Webhook-Security]] — signatures
 - [[GHL-Sync-Operations]] — bulk vs webhook
 - [[Supabase-GHL-Mirror]] — where data lands
+- [[Buyer-Journey-Event-Store]] — CRM events in unified journey model
+- [[Product-Phase-Roadmap]] — Phase 2 GHL automation intent
 
 ## External
 

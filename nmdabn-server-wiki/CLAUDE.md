@@ -10,11 +10,13 @@ This file is the **process contract** for any agent maintaining this vault. Read
 
 ## Three layers
 
-| Layer | Location | Who edits | Rule |
-|-------|-----------|-----------|------|
-| **Schema** | `CLAUDE.md` (this file) | Human + agent by explicit agreement | Defines workflows and boundaries. |
-| **Raw sources** | `raw/sources/` (optional `raw/assets/` for images) | **Human only** (or copy-on-ingest when the user asks) | **Immutable:** the agent does **not** modify, rename, or delete files under `raw/`. |
-| **Wiki pages** | `Home.md`, `index.md`, `log.md`, `concepts/`, `sources/`, `entities/` | **Agent** (with human review as desired) | Create, update, cross-link, and keep consistent. |
+
+| Layer           | Location                                                              | Who edits                                             | Rule                                                                                |
+| --------------- | --------------------------------------------------------------------- | ----------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| **Schema**      | `CLAUDE.md` (this file)                                               | Human + agent by explicit agreement                   | Defines workflows and boundaries.                                                   |
+| **Raw sources** | `raw/sources/` (optional `raw/assets/` for images)                    | **Human only** (or copy-on-ingest when the user asks) | **Immutable:** the agent does **not** modify, rename, or delete files under `raw/`. |
+| **Wiki pages**  | `Home.md`, `index.md`, `log.md`, `concepts/`, `sources/`, `entities/` | **Agent** (with human review as desired)              | Create, update, cross-link, and keep consistent.                                    |
+
 
 ## Critical boundary: SQL migrations
 
@@ -24,16 +26,18 @@ This file is the **process contract** for any agent maintaining this vault. Read
 
 ## Folder conventions
 
-| Path | Purpose |
-|------|---------|
-| `Home.md` | Human-facing entry; links to [[index]], [[CLAUDE]], [[log]]. |
-| `index.md` | **Catalog** of every wiki page: link, one-line summary, optional metadata (date, source ids). **Update after every ingest.** |
-| `log.md` | **Append-only** timeline of ingests, queries filed as pages, lint passes. New entries only **append** at the bottom (or top if you standardize on reverse-chrono — this vault uses **append at end**). |
-| `raw/sources/` | Frozen copies of articles, repo doc snapshots, clippings. Filename pattern: `YYYY-MM-DD-short-slug.md` (example: `2026-04-07-repo-ghl-webhooks.md`). |
-| `raw/assets/` | Optional images; prefer local paths for long-lived notes. |
-| `sources/` | **Wiki** pages tied to a **specific** raw source: summary, key claims, link to raw file + repo paths. |
-| `concepts/` | Topic pages: pipelines, architecture ideas, “how X works” syntheses spanning multiple sources. |
-| `entities/` | Things: vendors, apps, named integrations, org-specific IDs (when useful). |
+
+| Path           | Purpose                                                                                                                                                                                                |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Home.md`      | Human-facing entry; links to [[index]], [[CLAUDE]], [[log]].                                                                                                                                           |
+| `index.md`     | **Catalog** of every wiki page: link, one-line summary, optional metadata (date, source ids). **Update after every ingest.**                                                                           |
+| `log.md`       | **Append-only** timeline of ingests, queries filed as pages, lint passes. New entries only **append** at the bottom (or top if you standardize on reverse-chrono — this vault uses **append at end**). |
+| `raw/sources/` | Frozen copies of articles, repo doc snapshots, clippings. Filename pattern: `YYYY-MM-DD-short-slug.md` (example: `2026-04-07-repo-ghl-webhooks.md`).                                                   |
+| `raw/assets/`  | Optional images; prefer local paths for long-lived notes.                                                                                                                                              |
+| `sources/`     | **Wiki** pages tied to a **specific** raw source: summary, key claims, link to raw file + repo paths.                                                                                                  |
+| `concepts/`    | Topic pages: pipelines, architecture ideas, “how X works” syntheses spanning multiple sources.                                                                                                         |
+| `entities/`    | Things: vendors, apps, named integrations, org-specific IDs (when useful).                                                                                                                             |
+
 
 **Page titles:** Use clear `Title-Case-With-Hyphens.md` filenames for wiki pages so Obsidian wikilinks stay predictable.
 
@@ -52,7 +56,7 @@ This file is the **process contract** for any agent maintaining this vault. Read
 
 1. Open [[index]] and locate candidate pages.
 2. Read those pages and follow wikilinks; open `raw/sources/` only when fidelity to the original wording matters.
-3. Answer with citations (`[[PageName]]` or `` `path/to/file` ``).
+3. Answer with citations (`[[PageName]]` or ``path/to/file``).
 4. If the answer is **durable** (comparison, runbook, decision record), **add a wiki page** (often under `concepts/`) and link it from [[index]], then **append** [[log]] (`query` or `synthesis`).
 
 ## Lint workflow (periodic)
@@ -127,17 +131,19 @@ Use a **level-2 heading** so entries are grep-friendly:
 
 ## Repo map (NMDABN Server)
 
-| Area | Path |
-|------|------|
-| Server entry | `../src/index.ts` |
-| Env / GHL config | `../src/config/env.ts`, `../src/config/supabase.ts` |
-| GHL webhook route | `../src/routes/ghl-webhook.ts` |
-| Signature verification | `../src/services/ghl-webhook-signature.ts` |
-| Webhook → sync spawn | `../src/services/ghl-webhook-sync.ts` |
-| Contact bulk sync | `../scripts/sync-ghl-contacts-to-supabase.mjs` |
-| Orders/invoices sync | `../scripts/sync-ghl-orders-invoices-to-supabase.mjs` |
-| DB migration index | `../docs/database/README.md` |
-| Typegen output | `../src/database.types.ts` |
+
+| Area                   | Path                                                  |
+| ---------------------- | ----------------------------------------------------- |
+| Server entry           | `../src/index.ts`                                     |
+| Env / GHL config       | `../src/config/env.ts`, `../src/config/supabase.ts`   |
+| GHL webhook route      | `../src/routes/ghl-webhook.ts`                        |
+| Signature verification | `../src/services/ghl-webhook-signature.ts`            |
+| Webhook → sync spawn   | `../src/services/ghl-webhook-sync.ts`                 |
+| Contact bulk sync      | `../scripts/sync-ghl-contacts-to-supabase.mjs`        |
+| Orders/invoices sync   | `../scripts/sync-ghl-orders-invoices-to-supabase.mjs` |
+| DB migration index     | `../docs/database/README.md`                          |
+| Typegen output         | `../src/database.types.ts`                            |
+
 
 ## TypeScript / code edits
 
@@ -148,3 +154,4 @@ When changing application code in `../src/` or `../scripts/`, follow the reposit
 1. Read this file.
 2. Skim [[index]] and the last few headings in [[log]].
 3. Proceed with the user’s task using ingest / query / lint rules above.
+

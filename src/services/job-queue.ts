@@ -1,4 +1,5 @@
 import { supabase } from '../config/supabase';
+import type { Json } from '../database.types';
 import type { IntegrationProvider, IntegrationJobInsert } from '../types';
 import { resolveIntegrationAccount } from './integration-accounts';
 
@@ -10,7 +11,7 @@ export async function createJob(
   workspaceId: string,
   provider: IntegrationProvider,
   operation: string,
-  payload: Record<string, unknown>,
+  payload: object,
   integrationAccountId?: string,
   runAt?: Date
 ): Promise<{ success: boolean; jobId?: string; error?: string }> {
@@ -29,12 +30,14 @@ export async function createJob(
       };
     }
 
+    const payloadJson: Json = JSON.parse(JSON.stringify(payload)) as Json;
+
     // Create job record
     const jobData: IntegrationJobInsert = {
       workspace_id: workspaceId,
       provider,
       operation,
-      payload,
+      payload: payloadJson,
       integration_account_id: account.id,
       status: 'pending',
       attempts: 0,

@@ -28,6 +28,19 @@
 | [2026-04-07-repo-archive-projects-and-docs-update.md](raw/sources/2026-04-07-repo-archive-projects-and-docs-update.md) | Snapshot pointer for historical projects/docs update note. |
 | [2026-04-07-agent-ghl-contacts-sync-pagination-and-throughput-fix.md](raw/sources/2026-04-07-agent-ghl-contacts-sync-pagination-and-throughput-fix.md) | Agent implementation note about contacts sync pagination, batching, and 429 resiliency. |
 | [2026-04-07-agent-multi-location-ghl-architecture-recommendation.md](raw/sources/2026-04-07-agent-multi-location-ghl-architecture-recommendation.md) | Agent architecture note for project/location-scoped GHL integration model. |
+| [2026-04-07-sales-tracking-dashboard-spec-from-sheet-exports.md](raw/sources/2026-04-07-sales-tracking-dashboard-spec-from-sheet-exports.md) | CAE sales tracking dashboard spec derived from sheet exports (atomic facts + dimensions). |
+| [2026-04-07-phase-roadmap-and-phase-1-dashboard.md](raw/sources/2026-04-07-phase-roadmap-and-phase-1-dashboard.md) | Product phases 1–3 and Phase 1 dashboard intent. |
+| [2026-04-07-buyer-journey-tracking-zoom-ghl-first-party.md](raw/sources/2026-04-07-buyer-journey-tracking-zoom-ghl-first-party.md) | Buyer journey architecture: Zoom + GHL + first-party tracking. |
+| [2026-04-07-engineering-and-ops-direction.md](raw/sources/2026-04-07-engineering-and-ops-direction.md) | Monorepo without shared package, Render/Docker, modular monolith, webhook burst pattern, VAPI out of scope, multi-provider creds. |
+| [2026-04-13-traffic-dashboard-next-frontend-handoff.md](raw/sources/2026-04-13-traffic-dashboard-next-frontend-handoff.md) | Handoff: Traffic dashboard API + SQL paths, Next.js frontend layout, env vars (`NEXT_PUBLIC_*`), local run and security notes (no secrets). |
+
+### Raw assets (non-markdown, `raw/sources/`)
+
+| File | Role |
+|------|------|
+| `[CAE] Sales Tracking by NM - *.csv` (5 files) | Exported dashboard tabs referenced by sales spec. |
+| `[Dr Jasmine] Sales Tracking by NM.xlsx` | Spreadsheet source. |
+| `Phase-1-Better-Data-Faster-Decisions.pdf` | Phase 1 program PDF; not parsed into wiki body here. |
 
 ## Source notes (`sources/`)
 
@@ -42,6 +55,10 @@
 | [[Archive-Projects-And-Docs-Update]] | Historical projects + docs reorganization note, marked as legacy context. |
 | [[GHL-Contacts-Sync-Pagination-And-Throughput-Fix]] | Source ingest of sync reliability/performance remediation notes. |
 | [[Multi-Location-GHL-Architecture-Recommendation]] | Source ingest of multi-location integration architecture recommendation. |
+| [[Sales-Tracking-Dashboard-Spec-From-Sheet-Exports]] | Ingest of CAE dashboard structure from CSV-backed spec. |
+| [[Phase-Roadmap-And-Phase-1-Dashboard]] | Ingest of product phase definitions and Phase 1 goals. |
+| [[Buyer-Journey-Tracking-Zoom-GHL-First-Party]] | Ingest of journey timeline and multi-system data plan. |
+| [[Engineering-And-Ops-Direction]] | Monorepo layout, Render/Docker, modular monolith, webhook burst pattern, VAPI out of scope, per-project creds. |
 
 ## Concepts (`concepts/`)
 
@@ -56,6 +73,10 @@
 | [[Documentation-Lineage]] | Current-vs-archive documentation timeline and precedence rule. |
 | [[GHL-Contacts-Sync-Reliability]] | Practical reliability model for contacts sync pagination, retries, and throughput tuning. |
 | [[GHL-Multi-Location-Architecture]] | Target architecture for multi-project/multi-location GHL routing and sync execution. |
+| [[Sales-Tracking-Dashboard-Model]] | Atomic facts + dimensions model for four logical dashboards. |
+| [[Product-Phase-Roadmap]] | Phases 1–3 and engineering enablers (synthesis). |
+| [[Buyer-Journey-Event-Store]] | `journey_events`-style store and ingest paths by system. |
+| [[Platform-Engineering-Direction]] | Delivery synthesis: monorepo, modular monolith, Render+Docker, async webhooks, jobs hygiene, non-goals. |
 
 ## Entities (`entities/`)
 
@@ -63,6 +84,7 @@
 |------|---------|
 | [entities/README.md](entities/README.md) | Entities folder hub; lists current entity pages. |
 | [[GoHighLevel]] | Vendor / integration entity; surfaces, wiki hub, external doc link. |
+| [[Zoom]] | Webinar vendor; attendance/duration inputs for dashboard and journey. |
 
 ## Database and migrations (canonical in repo)
 

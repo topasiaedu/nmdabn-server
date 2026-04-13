@@ -35,12 +35,24 @@ router.get(
         .order('created_at', { ascending: false });
 
       // Apply filters
-      if (provider && typeof provider === 'string') {
-        query = query.eq('provider', provider);
+      const providerFilter = typeof provider === "string" ? provider : undefined;
+      if (
+        providerFilter === "zoom" ||
+        providerFilter === "vapi" ||
+        providerFilter === "google_sheets" ||
+        providerFilter === "gohighlevel"
+      ) {
+        query = query.eq("provider", providerFilter);
       }
 
-      if (status && typeof status === 'string') {
-        query = query.eq('status', status);
+      const statusFilter = typeof status === "string" ? status : undefined;
+      if (
+        statusFilter === "pending" ||
+        statusFilter === "processing" ||
+        statusFilter === "done" ||
+        statusFilter === "error"
+      ) {
+        query = query.eq("status", statusFilter);
       }
 
       // Apply limit

@@ -11,6 +11,8 @@ import jobsRoutes from './routes/jobs';
 import actionsRoutes from './routes/actions';
 import webhooksRoutes from './routes/webhooks';
 import projectsRoutes from './routes/projects';
+import workspacesRoutes from './routes/workspaces';
+import dashboardTrafficRoutes from './routes/dashboard-traffic';
 
 const app = express();
 
@@ -21,12 +23,16 @@ const app = express();
 // Security headers
 app.use(helmet());
 
-// CORS configuration
+// CORS configuration (add FRONTEND_ORIGIN for Traffic dashboard dev server, e.g. http://localhost:5173)
+const productionCorsOrigins = [
+  'https://your-frontend-domain.com',
+  ...(env.frontendOrigin ? [env.frontendOrigin] : []),
+].filter((o) => o.length > 0);
+
 app.use(
   cors({
-    origin: env.server.nodeEnv === 'production' 
-      ? ['https://your-frontend-domain.com'] // TODO: Update with actual frontend URL
-      : '*',
+    origin:
+      env.server.nodeEnv === 'production' ? productionCorsOrigins : true,
     credentials: true,
   })
 );
@@ -43,7 +49,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Request logging middleware
-app.use((req, res, next) => {
+app.use((req, _res, next) => {
   const timestamp = new Date().toISOString();
   console.log(`[${timestamp}] ${req.method} ${req.path}`);
   next();
@@ -54,7 +60,7 @@ app.use((req, res, next) => {
 // ============================================================================
 
 // Health check endpoint
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
   res.json({
     success: true,
     message: 'Server is running',
@@ -69,7 +75,9 @@ app.use('/api/integrations', integrationsRoutes);
 app.use('/api/jobs', jobsRoutes);
 app.use('/api/actions', actionsRoutes);
 app.use('/api/webhooks', webhooksRoutes);
+app.use('/api/workspaces', workspacesRoutes);
 app.use('/api/projects', projectsRoutes);
+app.use('/api/dashboard', dashboardTrafficRoutes);
 
 // ============================================================================
 // Error Handling
@@ -85,7 +93,7 @@ app.use((req, res) => {
 });
 
 // Global error handler
-app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error('Unhandled error:', err);
   res.status(500).json({
     success: false,
@@ -113,6 +121,7 @@ app.listen(PORT, () => {
   console.log('  GET    /api/auth/google/authorize');
   console.log('  GET    /api/auth/google/callback');
   console.log('  GET    /api/projects');
+  console.log('  GET    /api/workspaces');
   console.log('  GET    /api/projects/:id');
   console.log('  POST   /api/projects');
   console.log('  PATCH  /api/projects/:id');
@@ -139,6 +148,8 @@ app.listen(PORT, () => {
   if (env.ghl !== undefined) {
     console.log('  POST   /api/webhooks/ghl  (GoHighLevel — contact mirror sync)');
   }
+  console.log('  GET    /api/dashboard/traffic');
+  console.log('  GET    /api/dashboard/traffic/lines');
   console.log('='.repeat(60));
 });
 

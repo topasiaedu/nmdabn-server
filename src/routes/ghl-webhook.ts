@@ -7,6 +7,7 @@ import {
   runGhlInvoiceSyncForInvoiceId,
   runGhlOrderSyncForOrderId,
 } from "../services/ghl-webhook-sync";
+import { assignNextWebinarRunForContactId } from "../services/assign-webinar-run";
 
 /** Event types that include a contact id and should refresh normalized tables. */
 const CONTACT_UPSERT_TYPES = new Set([
@@ -219,9 +220,11 @@ export const ghlWebhookHandler: RequestHandler = (req, res) => {
       return;
     }
 
-    void runGhlContactSyncForContactId(contactId).catch((e) => {
-      console.error(`GHL webhook sync failed for ${contactId}:`, e);
-    });
+    void runGhlContactSyncForContactId(contactId)
+      .then(() => assignNextWebinarRunForContactId(contactId))
+      .catch((e) => {
+        console.error(`GHL webhook sync/assign failed for ${contactId}:`, e);
+      });
 
     res.status(200).json({ success: true, accepted: true, action: "sync" });
     return;

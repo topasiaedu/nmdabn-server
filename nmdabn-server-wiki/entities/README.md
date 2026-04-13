@@ -7,3 +7,4 @@ Add pages as ingests and questions surface them. Link entity pages from concept 
 ## In this vault
 
 - [[GoHighLevel]] — vendor / CRM integration entity
+- [[Zoom]] — webinar / attendance data source for dashboard and journey

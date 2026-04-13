@@ -1,10 +1,13 @@
 import { Router, Response } from 'express';
+import { parseProjectAgencyLineTags } from '../config/traffic';
 import { supabase } from '../config/supabase';
+import type { Database, Json } from '../database.types';
 import { authenticateUser } from '../middleware/auth';
 import { validateWorkspaceAccess } from '../middleware/workspace';
 import type { AuthenticatedRequest } from '../types';
 
 const router = Router();
+type ProjectInsert = Database["public"]["Tables"]["projects"]["Insert"];
 
 /**
  * GET /api/projects
@@ -111,7 +114,7 @@ router.get(
 /**
  * POST /api/projects
  * Create a new project
- * Body: { workspace_id, name, description? }
+ * Body: { workspace_id, name, description?, ghl_location_id?, traffic_occupation_field_id?, traffic_occupation_field_key?, traffic_agency_line_tags? }
  */
 router.post(
   '/',
@@ -120,7 +123,12 @@ router.post(
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { workspaceId } = req;
-      const { name, description } = req.body;
+      const body = req.body as Record<string, unknown>;
+      const { name, description } = body;
+      const ghlLocationIdBody = body.ghl_location_id;
+      const occupationFieldIdBody = body.traffic_occupation_field_id;
+      const occupationFieldKeyBody = body.traffic_occupation_field_key;
+      const agencyTagsBody = body.traffic_agency_line_tags;
 
       if (!workspaceId) {
         res.status(400).json({
@@ -130,7 +138,7 @@ router.post(
         return;
       }
 
-      if (!name) {
+      if (typeof name !== "string" || name.trim() === "") {
         res.status(400).json({
           success: false,
           error: 'name is required',
@@ -138,13 +146,74 @@ router.post(
         return;
       }
 
+      const insertData: ProjectInsert = {
+        workspace_id: workspaceId,
+        name: name.trim(),
+        description: typeof description === "string" && description.trim() !== "" ? description : null,
+      };
+
+      if (ghlLocationIdBody !== undefined) {
+        if (ghlLocationIdBody === null || ghlLocationIdBody === "") {
+          insertData.ghl_location_id = null;
+        } else if (typeof ghlLocationIdBody === "string") {
+          insertData.ghl_location_id = ghlLocationIdBody.trim();
+        } else {
+          res.status(400).json({
+            success: false,
+            error: "ghl_location_id must be a string or null",
+          });
+          return;
+        }
+      }
+
+      if (occupationFieldIdBody !== undefined) {
+        if (occupationFieldIdBody === null || occupationFieldIdBody === "") {
+          insertData.traffic_occupation_field_id = null;
+        } else if (typeof occupationFieldIdBody === "string") {
+          insertData.traffic_occupation_field_id = occupationFieldIdBody.trim();
+        } else {
+          res.status(400).json({
+            success: false,
+            error: "traffic_occupation_field_id must be a string or null",
+          });
+          return;
+        }
+      }
+
+      if (occupationFieldKeyBody !== undefined) {
+        if (occupationFieldKeyBody === null || occupationFieldKeyBody === "") {
+          insertData.traffic_occupation_field_key = null;
+        } else if (typeof occupationFieldKeyBody === "string") {
+          insertData.traffic_occupation_field_key = occupationFieldKeyBody.trim();
+        } else {
+          res.status(400).json({
+            success: false,
+            error: "traffic_occupation_field_key must be a string or null",
+          });
+          return;
+        }
+      }
+
+      if (agencyTagsBody !== undefined) {
+        if (agencyTagsBody === null) {
+          insertData.traffic_agency_line_tags = null;
+        } else {
+          const parsed = parseProjectAgencyLineTags(agencyTagsBody);
+          if (parsed === null) {
+            res.status(400).json({
+              success: false,
+              error:
+                "traffic_agency_line_tags must be null or an object like {\"OM\":[\"lead_om\"],\"NM\":[\"lead_nm\"]}",
+            });
+            return;
+          }
+          insertData.traffic_agency_line_tags = parsed as Json;
+        }
+      }
+
       const { data, error } = await supabase
         .from('projects')
-        .insert({
-          workspace_id: workspaceId,
-          name,
-          description: description || null,
-        })
+        .insert(insertData)
         .select()
         .single();
 
@@ -174,7 +243,7 @@ router.post(
 /**
  * PATCH /api/projects/:id
  * Update a project
- * Body: { name?, description? }
+ * Body: { name?, description?, ghl_location_id?, traffic_occupation_field_id?, traffic_occupation_field_key?, traffic_agency_line_tags? }
  * Query params: workspace_id (required)
  */
 router.patch(
@@ -185,7 +254,12 @@ router.patch(
     try {
       const { workspaceId } = req;
       const { id } = req.params;
-      const { name, description } = req.body;
+      const body = req.body as Record<string, unknown>;
+      const { name, description } = body;
+      const ghlLocationIdBody = body.ghl_location_id;
+      const occupationFieldBody = body.traffic_occupation_field_id;
+      const occupationFieldKeyBody = body.traffic_occupation_field_key;
+      const agencyTagsBody = body.traffic_agency_line_tags;
 
       if (!workspaceId) {
         res.status(400).json({
@@ -215,6 +289,65 @@ router.patch(
       const updateData: Record<string, unknown> = {};
       if (name !== undefined) updateData.name = name;
       if (description !== undefined) updateData.description = description;
+
+      if (ghlLocationIdBody !== undefined) {
+        if (ghlLocationIdBody === null || ghlLocationIdBody === "") {
+          updateData.ghl_location_id = null;
+        } else if (typeof ghlLocationIdBody === "string") {
+          updateData.ghl_location_id = ghlLocationIdBody.trim();
+        } else {
+          res.status(400).json({
+            success: false,
+            error: "ghl_location_id must be a string or null",
+          });
+          return;
+        }
+      }
+
+      if (occupationFieldBody !== undefined) {
+        if (occupationFieldBody === null || occupationFieldBody === "") {
+          updateData.traffic_occupation_field_id = null;
+        } else if (typeof occupationFieldBody === "string") {
+          updateData.traffic_occupation_field_id = occupationFieldBody.trim();
+        } else {
+          res.status(400).json({
+            success: false,
+            error: "traffic_occupation_field_id must be a string or null",
+          });
+          return;
+        }
+      }
+
+      if (occupationFieldKeyBody !== undefined) {
+        if (occupationFieldKeyBody === null || occupationFieldKeyBody === "") {
+          updateData.traffic_occupation_field_key = null;
+        } else if (typeof occupationFieldKeyBody === "string") {
+          updateData.traffic_occupation_field_key = occupationFieldKeyBody.trim();
+        } else {
+          res.status(400).json({
+            success: false,
+            error: "traffic_occupation_field_key must be a string or null",
+          });
+          return;
+        }
+      }
+
+      if (agencyTagsBody !== undefined) {
+        if (agencyTagsBody === null) {
+          updateData.traffic_agency_line_tags = null;
+        } else {
+          const parsed = parseProjectAgencyLineTags(agencyTagsBody);
+          if (parsed === null) {
+            res.status(400).json({
+              success: false,
+              error:
+                "traffic_agency_line_tags must be null or an object like {\"OM\":[\"lead_om\"],\"NM\":[\"lead_nm\"]}",
+            });
+            return;
+          }
+          updateData.traffic_agency_line_tags = parsed as Json;
+        }
+      }
 
       if (Object.keys(updateData).length === 0) {
         res.status(400).json({

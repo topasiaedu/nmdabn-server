@@ -1,4 +1,5 @@
-import dotenv from 'dotenv';
+import dotenv from "dotenv";
+import { loadTrafficAgencyLineTags } from "./traffic";
 
 dotenv.config();
 
@@ -28,6 +29,14 @@ interface EnvConfig {
     nodeEnv: string;
   };
   ghl: GhlConfig | undefined;
+  /** Traffic dashboard: line key → GHL tag names (from TRAFFIC_AGENCY_LINE_TAGS_JSON). */
+  trafficAgencyLineTags: Record<string, string[]>;
+  /** GHL custom field id for occupation (optional; overridable per request). */
+  trafficOccupationFieldId: string | undefined;
+  /** If set in production, required on `x-traffic-key` for dashboard routes. */
+  trafficDashboardApiKey: string | undefined;
+  /** Extra allowed CORS origin for the Traffic frontend (optional). */
+  frontendOrigin: string | undefined;
 }
 
 function validateEnv(): EnvConfig {
@@ -67,6 +76,25 @@ function validateEnv(): EnvConfig {
         }
       : undefined;
 
+  const trafficAgencyLineTags = loadTrafficAgencyLineTags(
+    process.env.TRAFFIC_AGENCY_LINE_TAGS_JSON
+  );
+  const trafficOccRaw = process.env.TRAFFIC_OCCUPATION_FIELD_ID;
+  const trafficOccupationFieldId =
+    trafficOccRaw !== undefined && trafficOccRaw.trim() !== ""
+      ? trafficOccRaw.trim()
+      : undefined;
+  const trafficKeyRaw = process.env.TRAFFIC_DASHBOARD_API_KEY;
+  const trafficDashboardApiKey =
+    trafficKeyRaw !== undefined && trafficKeyRaw.trim() !== ""
+      ? trafficKeyRaw.trim()
+      : undefined;
+  const frontRaw = process.env.FRONTEND_ORIGIN;
+  const frontendOrigin =
+    frontRaw !== undefined && frontRaw.trim() !== ""
+      ? frontRaw.trim()
+      : undefined;
+
   return {
     supabase: {
       url: process.env.SUPABASE_URL!,
@@ -78,10 +106,14 @@ function validateEnv(): EnvConfig {
       redirectUri: process.env.GOOGLE_REDIRECT_URI!,
     },
     server: {
-      port: parseInt(process.env.PORT || '3000', 10),
-      nodeEnv: process.env.NODE_ENV || 'development',
+      port: parseInt(process.env.PORT || "3000", 10),
+      nodeEnv: process.env.NODE_ENV || "development",
     },
     ghl,
+    trafficAgencyLineTags,
+    trafficOccupationFieldId,
+    trafficDashboardApiKey,
+    frontendOrigin,
   };
 }
 

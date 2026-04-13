@@ -35,8 +35,14 @@ router.get(
         .order('created_at', { ascending: false });
 
       // Filter by provider if specified
-      if (provider && typeof provider === 'string') {
-        query = query.eq('provider', provider);
+      const providerFilter = typeof provider === "string" ? provider : undefined;
+      if (
+        providerFilter === "zoom" ||
+        providerFilter === "vapi" ||
+        providerFilter === "google_sheets" ||
+        providerFilter === "gohighlevel"
+      ) {
+        query = query.eq("provider", providerFilter);
       }
 
       const { data, error } = await query;

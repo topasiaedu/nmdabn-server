@@ -93,14 +93,25 @@ export type Database = {
       ghl_contacts: {
         Row: {
           id: string
+          webinar_run_id: string | null
         }
         Insert: {
           id: string
+          webinar_run_id?: string | null
         }
         Update: {
           id?: string
+          webinar_run_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "ghl_contacts_webinar_run_id_fkey"
+            columns: ["webinar_run_id"]
+            isOneToOne: false
+            referencedRelation: "webinar_runs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       google_sheets_syncs: {
         Row: {
@@ -287,6 +298,53 @@ export type Database = {
           },
         ]
       }
+      projects: {
+        Row: {
+          id: string
+          workspace_id: string
+          name: string
+          description: string | null
+          created_at: string
+          updated_at: string
+          ghl_location_id: string | null
+          traffic_occupation_field_id: string | null
+          traffic_occupation_field_key: string | null
+          traffic_agency_line_tags: Json | null
+        }
+        Insert: {
+          id?: string
+          workspace_id: string
+          name: string
+          description?: string | null
+          created_at?: string
+          updated_at?: string
+          ghl_location_id?: string | null
+          traffic_occupation_field_id?: string | null
+          traffic_occupation_field_key?: string | null
+          traffic_agency_line_tags?: Json | null
+        }
+        Update: {
+          id?: string
+          workspace_id?: string
+          name?: string
+          description?: string | null
+          created_at?: string
+          updated_at?: string
+          ghl_location_id?: string | null
+          traffic_occupation_field_id?: string | null
+          traffic_occupation_field_key?: string | null
+          traffic_agency_line_tags?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "projects_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       users: {
         Row: {
           created_at: string
@@ -362,6 +420,84 @@ export type Database = {
           created_at?: string
           id?: string
           name?: string
+        }
+        Relationships: []
+      }
+      webinar_runs: {
+        Row: {
+          id: string
+          location_id: string
+          display_label: string
+          event_start_at: string
+          event_end_at: string
+          timezone: string
+          format: string
+          sort_order: number | null
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          location_id: string
+          display_label: string
+          event_start_at: string
+          event_end_at: string
+          timezone?: string
+          format?: string
+          sort_order?: number | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          location_id?: string
+          display_label?: string
+          event_start_at?: string
+          event_end_at?: string
+          timezone?: string
+          format?: string
+          sort_order?: number | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ghl_custom_fields: {
+        Row: {
+          location_id: string
+          field_id: string
+          field_key: string | null
+          field_name: string | null
+          field_type: string | null
+          data_type: string | null
+          picklist_options: Json
+          raw_json: Json
+          synced_at: string
+        }
+        Insert: {
+          location_id: string
+          field_id: string
+          field_key?: string | null
+          field_name?: string | null
+          field_type?: string | null
+          data_type?: string | null
+          picklist_options?: Json
+          raw_json?: Json
+          synced_at?: string
+        }
+        Update: {
+          location_id?: string
+          field_id?: string
+          field_key?: string | null
+          field_name?: string | null
+          field_type?: string | null
+          data_type?: string | null
+          picklist_options?: Json
+          raw_json?: Json
+          synced_at?: string
         }
         Relationships: []
       }
@@ -977,7 +1113,43 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      assign_next_webinar_run_for_contact: {
+        Args: { p_contact_id: string }
+        Returns: undefined
+      }
+      backfill_webinar_runs_for_location: {
+        Args: { p_location_id: string }
+        Returns: number
+      }
+      traffic_occupation_breakdown: {
+        Args: {
+          p_location_id: string
+          p_line_tags: string[]
+          p_occupation_field_id: string
+          p_date_from?: string | null
+          p_date_to?: string | null
+        }
+        Returns: {
+          occupation_label: string
+          webinar_run_id: string | null
+          run_display_label: string
+          lead_count: number
+        }[]
+      }
+      traffic_lead_source_breakdown: {
+        Args: {
+          p_location_id: string
+          p_line_tags: string[]
+          p_date_from?: string | null
+          p_date_to?: string | null
+        }
+        Returns: {
+          lead_source_key: string
+          webinar_run_id: string | null
+          run_display_label: string
+          lead_count: number
+        }[]
+      }
     }
     Enums: {
       integration_job_status: "pending" | "processing" | "done" | "error"

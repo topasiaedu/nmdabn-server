@@ -829,9 +829,78 @@ async function main() {
     return ghlRequest("POST", path, body);
   }
 
+  /**
+   * Sync custom field definitions for this location.
+   * This lets app features map by field key/name without hardcoding per-location ids.
+   *
+   * @returns {Promise<void>}
+   */
+  async function syncCustomFieldDefinitions() {
+    /** @type {unknown} */
+    const body = await ghlGet(`/locations/${encodeURIComponent(locationId)}/customFields`);
+    const list = isRecord(body) && Array.isArray(body.customFields)
+      ? body.customFields
+      : isRecord(body) && Array.isArray(body.fields)
+        ? body.fields
+        : Array.isArray(body)
+          ? body
+          : [];
+
+    /** @type {{ location_id: string; field_id: string; field_key: string | null; field_name: string | null; field_type: string | null; data_type: string | null; picklist_options: unknown[]; raw_json: Record<string, unknown>; synced_at: string }[]} */
+    const rows = [];
+    const now = new Date().toISOString();
+    for (const raw of list) {
+      if (!isRecord(raw)) {
+        continue;
+      }
+      const rawId = raw.id;
+      if (typeof rawId !== "string" || rawId.trim() === "") {
+        continue;
+      }
+      const rawKey = raw.fieldKey;
+      const rawName = raw.name;
+      const rawType = raw.fieldType;
+      const rawDataType = raw.dataType;
+      const opts = Array.isArray(raw.options) ? raw.options : [];
+      rows.push({
+        location_id: locationId,
+        field_id: rawId.trim(),
+        field_key: typeof rawKey === "string" && rawKey.trim() !== "" ? rawKey.trim() : null,
+        field_name: typeof rawName === "string" && rawName.trim() !== "" ? rawName.trim() : null,
+        field_type: typeof rawType === "string" && rawType.trim() !== "" ? rawType.trim() : null,
+        data_type:
+          typeof rawDataType === "string" && rawDataType.trim() !== ""
+            ? rawDataType.trim()
+            : null,
+        picklist_options: opts,
+        raw_json: raw,
+        synced_at: now,
+      });
+    }
+
+    if (rows.length === 0) {
+      console.log("Custom field sync: no customFields returned.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("ghl_custom_fields")
+      .upsert(rows, { onConflict: "location_id,field_id" });
+
+    if (error) {
+      console.warn(
+        "Custom field sync failed (apply docs/database/migrations/009 first):",
+        error.message
+      );
+      return;
+    }
+    console.log(`Custom field sync: upserted ${rows.length} definitions.`);
+  }
+
   const singleId = args.contactId.trim();
   if (singleId !== "") {
     try {
+      await syncCustomFieldDefinitions();
       /** @type {unknown} */
       const detail = await ghlGet(
         `/contacts/${encodeURIComponent(singleId)}`
@@ -840,6 +909,17 @@ async function main() {
         updateCursor: false,
         cursorLocationId: locationId,
       });
+      const { error: assignErr } = await supabase.rpc(
+        "assign_next_webinar_run_for_contact",
+        { p_contact_id: singleId }
+      );
+      if (assignErr) {
+        console.warn(
+          "assign_next_webinar_run_for_contact:",
+          assignErr.message,
+          "(apply docs/database/migrations/006 and 007 if missing)"
+        );
+      }
       console.log(`Done. Single contact synced: ${singleId}`);
     } catch (e) {
       console.error(e);
@@ -849,6 +929,7 @@ async function main() {
   }
 
   let page = 1;
+  await syncCustomFieldDefinitions();
   if (args.resume) {
     const { data: cur, error: curErr } = await supabase
       .from("ghl_sync_cursors")
@@ -1029,6 +1110,18 @@ async function main() {
   }
 
   console.log(`Done. Contacts processed: ${processed}`);
+
+  if (process.env.TRAFFIC_BACKFILL_AFTER_FULL_SYNC === "1") {
+    const { data: n, error: bfErr } = await supabase.rpc(
+      "backfill_webinar_runs_for_location",
+      { p_location_id: locationId }
+    );
+    if (bfErr) {
+      console.warn("backfill_webinar_runs_for_location:", bfErr.message);
+    } else {
+      console.log(`Webinar run backfill updated rows: ${n ?? 0}`);
+    }
+  }
 }
 
 main().catch((e) => {
