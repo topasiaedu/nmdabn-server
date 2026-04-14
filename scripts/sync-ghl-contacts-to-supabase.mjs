@@ -10,12 +10,14 @@
  *   GHL_RATE_LIMIT_RETRIES (default 6), GHL_RATE_LIMIT_BACKOFF_MS (default 800)
  *
  * Flags: --max-contacts=N, --resume (uses ghl_sync_cursors), --contact-id=ID (single contact; used by server webhook)
+ * Multi-location: --connection-id=UUID or --project-id=UUID (uses ghl_connections + GHL_CONNECTION_TOKEN_ENCRYPTION_KEY; overrides GHL_* env for token/location)
  *
  * List pagination: uses recommended `POST /contacts/search` (Get Contacts is deprecated in GHL docs).
  * Search traversal uses `page` + `pageLimit` for compatibility with current API validation.
  * Logs `Synced N` = detail fetches completed, not “new unique rows only.”
  */
 import { createClient } from "@supabase/supabase-js";
+import { loadGhlCredentialsFromDb } from "./lib/load-ghl-credentials-from-db.mjs";
 
 const BASE = "https://services.leadconnectorhq.com";
 const PAGE_LIMIT = 100;
@@ -265,8 +267,14 @@ async function insertInChunks(supabase, table, rows) {
 }
 
 function parseArgs() {
-  /** @type {{ maxContacts: string; resume: boolean; contactId: string }} */
-  const out = { maxContacts: "", resume: false, contactId: "" };
+  /** @type {{ maxContacts: string; resume: boolean; contactId: string; connectionId: string; projectId: string }} */
+  const out = {
+    maxContacts: "",
+    resume: false,
+    contactId: "",
+    connectionId: "",
+    projectId: "",
+  };
   for (const a of process.argv.slice(2)) {
     if (a === "--resume") {
       out.resume = true;
@@ -274,6 +282,10 @@ function parseArgs() {
       out.maxContacts = a.slice("--max-contacts=".length);
     } else if (a.startsWith("--contact-id=")) {
       out.contactId = a.slice("--contact-id=".length);
+    } else if (a.startsWith("--connection-id=")) {
+      out.connectionId = a.slice("--connection-id=".length);
+    } else if (a.startsWith("--project-id=")) {
+      out.projectId = a.slice("--project-id=".length);
     }
   }
   return out;
@@ -736,17 +748,35 @@ async function main() {
     "SUPABASE_SERVICE_ROLE_KEY",
     process.env.SUPABASE_SERVICE_ROLE_KEY
   );
-  const ghlToken = requireEnv(
-    "GHL_PRIVATE_INTEGRATION_TOKEN",
-    process.env.GHL_PRIVATE_INTEGRATION_TOKEN
-  );
-  const locationId = requireEnv("GHL_LOCATION_ID", process.env.GHL_LOCATION_ID);
+  const supabase = createClient(supabaseUrl, supabaseKey);
+
+  const useDbConn =
+    args.connectionId.trim() !== "" || args.projectId.trim() !== "";
+  let ghlToken;
+  let locationId;
+  if (useDbConn) {
+    const encRaw = requireEnv(
+      "GHL_CONNECTION_TOKEN_ENCRYPTION_KEY",
+      process.env.GHL_CONNECTION_TOKEN_ENCRYPTION_KEY
+    );
+    const creds = await loadGhlCredentialsFromDb(
+      supabase,
+      { connectionId: args.connectionId, projectId: args.projectId },
+      encRaw
+    );
+    ghlToken = creds.ghlToken;
+    locationId = creds.locationId;
+  } else {
+    ghlToken = requireEnv(
+      "GHL_PRIVATE_INTEGRATION_TOKEN",
+      process.env.GHL_PRIVATE_INTEGRATION_TOKEN
+    );
+    locationId = requireEnv("GHL_LOCATION_ID", process.env.GHL_LOCATION_ID);
+  }
   const verContacts =
     process.env.GHL_API_VERSION_CONTACTS ?? "2021-07-28";
   const rateLimitRetries = rateLimitRetriesFromEnv();
   const rateLimitBackoffMs = rateLimitBackoffMsFromEnv();
-
-  const supabase = createClient(supabaseUrl, supabaseKey);
 
   /**
    * Shared HTTP request with retry for 429.

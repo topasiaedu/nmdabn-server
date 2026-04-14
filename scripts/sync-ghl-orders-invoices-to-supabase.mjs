@@ -22,8 +22,10 @@
  *   --max-invoices=N
  *   --order-id=ID
  *   --invoice-id=ID
+ * Multi-location: --connection-id=UUID or --project-id=UUID (ghl_connections + GHL_CONNECTION_TOKEN_ENCRYPTION_KEY)
  */
 import { createClient } from "@supabase/supabase-js";
+import { loadGhlCredentialsFromDb } from "./lib/load-ghl-credentials-from-db.mjs";
 
 const BASE = "https://services.leadconnectorhq.com";
 const PAGE_LIMIT = 100;
@@ -100,7 +102,14 @@ function firstString(obj, keys) {
 }
 
 function parseArgs() {
-  const out = { maxOrders: "", maxInvoices: "", orderId: "", invoiceId: "" };
+  const out = {
+    maxOrders: "",
+    maxInvoices: "",
+    orderId: "",
+    invoiceId: "",
+    connectionId: "",
+    projectId: "",
+  };
   for (const a of process.argv.slice(2)) {
     if (a.startsWith("--max-orders=")) {
       out.maxOrders = a.slice("--max-orders=".length);
@@ -110,6 +119,10 @@ function parseArgs() {
       out.orderId = a.slice("--order-id=".length);
     } else if (a.startsWith("--invoice-id=")) {
       out.invoiceId = a.slice("--invoice-id=".length);
+    } else if (a.startsWith("--connection-id=")) {
+      out.connectionId = a.slice("--connection-id=".length);
+    } else if (a.startsWith("--project-id=")) {
+      out.projectId = a.slice("--project-id=".length);
     }
   }
   return out;
@@ -207,15 +220,36 @@ async function main() {
 
   const supabaseUrl = requireEnv("SUPABASE_URL", process.env.SUPABASE_URL);
   const supabaseKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY", process.env.SUPABASE_SERVICE_ROLE_KEY);
-  const token = requireEnv("GHL_PRIVATE_INTEGRATION_TOKEN", process.env.GHL_PRIVATE_INTEGRATION_TOKEN);
-  const locationId = requireEnv("GHL_LOCATION_ID", process.env.GHL_LOCATION_ID);
+  const supabase = createClient(supabaseUrl, supabaseKey);
+
+  const useDbConn =
+    args.connectionId.trim() !== "" || args.projectId.trim() !== "";
+  let token;
+  let locationId;
+  if (useDbConn) {
+    const encRaw = requireEnv(
+      "GHL_CONNECTION_TOKEN_ENCRYPTION_KEY",
+      process.env.GHL_CONNECTION_TOKEN_ENCRYPTION_KEY
+    );
+    const creds = await loadGhlCredentialsFromDb(
+      supabase,
+      { connectionId: args.connectionId, projectId: args.projectId },
+      encRaw
+    );
+    token = creds.ghlToken;
+    locationId = creds.locationId;
+  } else {
+    token = requireEnv(
+      "GHL_PRIVATE_INTEGRATION_TOKEN",
+      process.env.GHL_PRIVATE_INTEGRATION_TOKEN
+    );
+    locationId = requireEnv("GHL_LOCATION_ID", process.env.GHL_LOCATION_ID);
+  }
   const version = process.env.GHL_API_VERSION_PAYMENTS ?? "2021-07-28";
   const ordersListPath = process.env.GHL_ORDERS_LIST_PATH ?? "/payments/orders/";
   const orderDetailTpl = process.env.GHL_ORDERS_DETAIL_PATH_TEMPLATE ?? "/payments/orders/{id}";
   const invoicesListPath = process.env.GHL_INVOICES_LIST_PATH ?? "/invoices/";
   const invoiceDetailTpl = process.env.GHL_INVOICES_DETAIL_PATH_TEMPLATE ?? "/invoices/{id}";
-
-  const supabase = createClient(supabaseUrl, supabaseKey);
 
   async function ghlGet(pathWithQuery) {
     await sleep(throttleMs);

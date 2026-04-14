@@ -33,6 +33,8 @@
 | [2026-04-07-buyer-journey-tracking-zoom-ghl-first-party.md](raw/sources/2026-04-07-buyer-journey-tracking-zoom-ghl-first-party.md) | Buyer journey architecture: Zoom + GHL + first-party tracking. |
 | [2026-04-07-engineering-and-ops-direction.md](raw/sources/2026-04-07-engineering-and-ops-direction.md) | Monorepo without shared package, Render/Docker, modular monolith, webhook burst pattern, VAPI out of scope, multi-provider creds. |
 | [2026-04-13-traffic-dashboard-next-frontend-handoff.md](raw/sources/2026-04-13-traffic-dashboard-next-frontend-handoff.md) | Handoff: Traffic dashboard API + SQL paths, Next.js frontend layout, env vars (`NEXT_PUBLIC_*`), local run and security notes (no secrets). |
+| [2026-04-13-phase1-execution-plan-and-zoom-webinar-design.md](raw/sources/2026-04-13-phase1-execution-plan-and-zoom-webinar-design.md) | Full Phase 1 build order (10 steps), Zoom S2S integration decisions, per-project Zoom accounts, journey_events schema, and 4 open decisions blocking completion. |
+| [2026-04-13-nextjs-consolidation-decision.md](raw/sources/2026-04-13-nextjs-consolidation-decision.md) | Decision to consolidate Express + Next.js into a single Next.js app. Rationale, directory structure before/after, route map, migration patterns, merged package.json. |
 
 ### Raw assets (non-markdown, `raw/sources/`)
 
@@ -59,6 +61,8 @@
 | [[Phase-Roadmap-And-Phase-1-Dashboard]] | Ingest of product phase definitions and Phase 1 goals. |
 | [[Buyer-Journey-Tracking-Zoom-GHL-First-Party]] | Ingest of journey timeline and multi-system data plan. |
 | [[Engineering-And-Ops-Direction]] | Monorepo layout, Render/Docker, modular monolith, webhook burst pattern, VAPI out of scope, per-project creds. |
+| [[Phase-1-Execution-Plan-And-Zoom-Design]] | Full Phase 1 build order, Zoom S2S design decisions, journey_events schema, open decisions register. |
+| [[NextJS-Consolidation-Decision]] | Decision to consolidate into Next.js only. Rationale: event-driven ingestion model, no continuous loops needed. |
 
 ## Concepts (`concepts/`)
 
@@ -75,8 +79,13 @@
 | [[GHL-Multi-Location-Architecture]] | Target architecture for multi-project/multi-location GHL routing and sync execution. |
 | [[Sales-Tracking-Dashboard-Model]] | Atomic facts + dimensions model for four logical dashboards. |
 | [[Product-Phase-Roadmap]] | Phases 1–3 and engineering enablers (synthesis). |
-| [[Buyer-Journey-Event-Store]] | `journey_events`-style store and ingest paths by system. |
-| [[Platform-Engineering-Direction]] | Delivery synthesis: monorepo, modular monolith, Render+Docker, async webhooks, jobs hygiene, non-goals. |
+| [[Buyer-Journey-Event-Store]] | `journey_events` decided schema (migration 011) and Zoom attendance ingest path. Updated 2026-04-13. |
+| [[Platform-Engineering-Direction]] | Updated 2026-04-13: single Next.js app (no separate Express), one Render service, async webhooks, cron for scheduled syncs. |
+| [[Zoom-Integration-Architecture]] | Zoom S2S OAuth flow, per-project credential chain, token caching, API endpoints, security notes. |
+| [[Webinar-Run-Zoom-Linkage]] | Explicit `zoom_meeting_id` on `webinar_runs`; `zoom_source_type` field; sync service logic. |
+| [[Phase-1-Build-Order]] | Ordered execution plan (Step 1 ✅ done → Migration Step → Steps 2–10) with Next.js consolidation incorporated. |
+| [[Phase-1-Open-Decisions]] | Four unresolved decisions blocking Phase 1 completion: ad spend source, showed denominator, encryption, backfill scope. |
+| [[NextJS-Consolidation-Architecture]] | Full agent implementation guide: file moves, route map, migration patterns (raw body, auth helpers, params, env), merged package.json, Dockerfile. |
 
 ## Entities (`entities/`)
 

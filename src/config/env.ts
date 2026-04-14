@@ -1,7 +1,13 @@
-import dotenv from "dotenv";
 import { loadTrafficAgencyLineTags } from "./traffic";
+import { parseGhlConnectionTokenEncryptionKey } from "@/services/ghl-connection-token-crypto";
 
-dotenv.config();
+function requiredEnv(name: string): string {
+  const v = process.env[name];
+  if (v === undefined || v === "") {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return v;
+}
 
 /** Present when GHL_PRIVATE_INTEGRATION_TOKEN and GHL_LOCATION_ID are both set. */
 export interface GhlConfig {
@@ -14,18 +20,24 @@ export interface GhlConfig {
   webhookSkipVerify: boolean;
 }
 
-interface EnvConfig {
+/**
+ * Present only when all three GOOGLE_* env vars are set.
+ * Google Sheets integration is optional — routes that need this will return 501 when absent.
+ */
+export interface GoogleConfig {
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+}
+
+export interface EnvConfig {
   supabase: {
     url: string;
     serviceRoleKey: string;
   };
-  google: {
-    clientId: string;
-    clientSecret: string;
-    redirectUri: string;
-  };
+  /** Undefined when Google OAuth env vars are not configured. */
+  google: GoogleConfig | undefined;
   server: {
-    port: number;
     nodeEnv: string;
   };
   ghl: GhlConfig | undefined;
@@ -35,26 +47,20 @@ interface EnvConfig {
   trafficOccupationFieldId: string | undefined;
   /** If set in production, required on `x-traffic-key` for dashboard routes. */
   trafficDashboardApiKey: string | undefined;
-  /** Extra allowed CORS origin for the Traffic frontend (optional). */
-  frontendOrigin: string | undefined;
+  /**
+   * True when `GHL_CONNECTION_TOKEN_ENCRYPTION_KEY` is set and parses successfully.
+   * Used for encrypting integration secrets and decrypting stored GHL tokens.
+   */
+  encryptionKeyLoaded: boolean;
 }
 
 function validateEnv(): EnvConfig {
-  const required = [
-    'SUPABASE_URL',
-    'SUPABASE_SERVICE_ROLE_KEY',
-    'GOOGLE_CLIENT_ID',
-    'GOOGLE_CLIENT_SECRET',
-    'GOOGLE_REDIRECT_URI',
-  ];
+  const supabaseUrl = requiredEnv("SUPABASE_URL");
+  const supabaseServiceRoleKey = requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
 
-  const missing = required.filter((key) => !process.env[key]);
-
-  if (missing.length > 0) {
-    throw new Error(
-      `Missing required environment variables: ${missing.join(', ')}`
-    );
-  }
+  const googleClientId = process.env.GOOGLE_CLIENT_ID?.trim();
+  const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
+  const googleRedirectUri = process.env.GOOGLE_REDIRECT_URI?.trim();
 
   const ghlToken = process.env.GHL_PRIVATE_INTEGRATION_TOKEN;
   const ghlLocation = process.env.GHL_LOCATION_ID;
@@ -89,31 +95,42 @@ function validateEnv(): EnvConfig {
     trafficKeyRaw !== undefined && trafficKeyRaw.trim() !== ""
       ? trafficKeyRaw.trim()
       : undefined;
-  const frontRaw = process.env.FRONTEND_ORIGIN;
-  const frontendOrigin =
-    frontRaw !== undefined && frontRaw.trim() !== ""
-      ? frontRaw.trim()
+
+  const ghlEncRaw = process.env.GHL_CONNECTION_TOKEN_ENCRYPTION_KEY;
+  let encryptionKeyLoaded = false;
+  if (ghlEncRaw !== undefined && ghlEncRaw.trim() !== "") {
+    parseGhlConnectionTokenEncryptionKey(ghlEncRaw);
+    encryptionKeyLoaded = true;
+  } else {
+    console.warn(
+      "GHL_CONNECTION_TOKEN_ENCRYPTION_KEY is not set; encrypting integration secrets and decrypting GHL tokens will fail until configured."
+    );
+  }
+
+  const google: GoogleConfig | undefined =
+    googleClientId !== undefined &&
+    googleClientId !== "" &&
+    googleClientSecret !== undefined &&
+    googleClientSecret !== "" &&
+    googleRedirectUri !== undefined &&
+    googleRedirectUri !== ""
+      ? { clientId: googleClientId, clientSecret: googleClientSecret, redirectUri: googleRedirectUri }
       : undefined;
 
   return {
     supabase: {
-      url: process.env.SUPABASE_URL!,
-      serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      url: supabaseUrl,
+      serviceRoleKey: supabaseServiceRoleKey,
     },
-    google: {
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-      redirectUri: process.env.GOOGLE_REDIRECT_URI!,
-    },
+    google,
     server: {
-      port: parseInt(process.env.PORT || "3000", 10),
       nodeEnv: process.env.NODE_ENV || "development",
     },
     ghl,
     trafficAgencyLineTags,
     trafficOccupationFieldId,
     trafficDashboardApiKey,
-    frontendOrigin,
+    encryptionKeyLoaded,
   };
 }
 

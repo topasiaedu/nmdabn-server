@@ -10,19 +10,19 @@ How an inbound GoHighLevel webhook is handled in this API (contacts + billing mi
 
 ## Flow (ordered)
 
-1. **Config gate:** If `env.ghl` is undefined (missing `GHL_PRIVATE_INTEGRATION_TOKEN` or `GHL_LOCATION_ID`), respond **503** with JSON error.
-2. **Body type:** If `req.body` is not a `Buffer`, **400** `Expected raw JSON body`.
-3. **UTF-8 string:** `rawBuf.toString("utf8")` — must match what GHL signed.
-4. **Signature:** Unless `GHL_WEBHOOK_SKIP_VERIFY` is allowed in non-production, `verifyGhlWebhookSignature(rawUtf8, req.headers)`; failure → **401**. See [[GHL-Webhook-Security]].
-5. **Parse JSON:** Failure → **400**. Root must be a plain object.
-6. **Extract:** `eventType` from `type`, `data`, `webhookId`, and ids (`contactId`, `orderId`, `invoiceId`, `payloadLocationId`) via helpers that tolerate nested `contact` / `order` / `invoice` objects.
-7. **Location filter:** If `payloadLocationId` is non-null and ≠ `ghl.locationId`, **200** `{ skipped: true, reason: "location_mismatch" }` — no sync, no error to GHL.
+1. **Body type:** If `req.body` is not a `Buffer`, **400** `Expected raw JSON body`.
+2. **UTF-8 string:** `rawBuf.toString("utf8")` — must match what GHL signed.
+3. **Signature:** Unless `GHL_WEBHOOK_SKIP_VERIFY` is allowed in non-production, `verifyGhlWebhookSignature(rawUtf8, req.headers)`; failure → **401**. See [[GHL-Webhook-Security]].
+4. **Parse JSON:** Failure → **400**. Root must be a plain object.
+5. **Extract:** `eventType` from `type`, `data`, `webhookId`, and ids (`contactId`, `orderId`, `invoiceId`, `payloadLocationId`) via helpers that tolerate nested `contact` / `order` / `invoice` objects.
+6. **Unhandled types:** If the event is not a mutating contact/order/invoice type, **200** `ignored: true` (no credential resolution).
+7. **Credential resolution:** Lookup active `ghl_connections` by `payloadLocationId`; decrypt token with `GHL_CONNECTION_TOKEN_ENCRYPTION_KEY`. Else env fallback (`GHL_PRIVATE_INTEGRATION_TOKEN` + `GHL_LOCATION_ID`) when allowed, with **console.warn**. Else **200** `{ skipped: true, reason: … }` (`unknown_location`, `decrypt_failed`, etc.).
 8. **Branch:**
    - **ContactDelete:** Supabase delete from `ghl_contacts` by id (async IIFE); **200** `action: "delete"`. Missing id → **200** `ignored`.
-   - **Contact upsert set:** `runGhlContactSyncForContactId` (spawn); **200** `action: "sync"`. Missing id → **200** `ignored`.
+   - **Contact upsert set:** `runGhlContactSyncForContactId(contactId, credentials)` (spawn with per-event GHL env); **200** `action: "sync"`. Missing id → **200** `ignored`.
    - **Order upsert set:** `runGhlOrderSyncForOrderId`; **200** `action: "sync_order"`.
    - **Invoice upsert set:** `runGhlInvoiceSyncForInvoiceId`; **200** `action: "sync_invoice"`.
-   - **Else:** **200** `ignored: true`, log unhandled type.
+   - **Else (should not occur after step 6):** **500** internal error.
 
 **Async note:** Upsert/delete work is **not** awaited before the HTTP response; errors go to `console.error`.
 
@@ -45,4 +45,4 @@ How an inbound GoHighLevel webhook is handled in this API (contacts + billing mi
 
 ## Contradictions / history
 
-- None recorded.
+- **2026-04-13:** Replaced single-location **503** gate and `location_mismatch` skip with `ghl_connections` lookup + env fallback; skip reasons are now `unknown_location`, `decrypt_failed`, etc. See [[GHL-Webhooks]] live doc in repo.

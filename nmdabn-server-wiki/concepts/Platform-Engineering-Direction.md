@@ -2,19 +2,26 @@
 
 Synthesis of **how we build and run** the product stack: repo layout, deployment shape, request handling under load, and explicit non-goals.
 
-## Monorepo, no shared package layer
+## Monorepo, single Next.js app (updated 2026-04-13)
 
-- One repo for **frontend + backend** so contracts stay aligned.
-- **Avoid** a cross-app `packages/shared` library; keep types and helpers **inside** `frontend/` and `backend/` (or equivalent). Duplication is acceptable if each tree stays clean.
+- One repo, one Next.js app — frontend pages and API Route Handlers live together.
+- **No separate Express server.** The standalone Express server was consolidated into Next.js Route Handlers (see [[NextJS-Consolidation-Architecture]]).
+- **No** `packages/shared` library — types and helpers live inside `src/` in the single app.
+- `.mjs` sync scripts remain at the repo root and are invoked by Render cron jobs.
+
+> **Supersedes prior note:** an earlier version of this page described "frontend + backend as separate apps." That was the starting state and was intentionally collapsed. Do not reintroduce a separate Express server.
 
 ## Deployment
 
-- Target **Render** with **Docker** (per-service env and health checks as Render requires).
+- Target **Render** with **Docker** — **one web service** running `next start`.
+- Cron syncs run as separate Render cron jobs hitting internal API endpoints (e.g. `POST /api/actions/sync/ghl`).
+- Optional background worker (if a durable job queue is added later): separate Render service from the same image with a different `CMD`.
 
 ## Modular monolith
 
 - **Not** microservices at current scope.
-- One API process with **clear modules**; optional **background worker** from the **same** image for async work.
+- One Next.js process with **clear modules** (`src/services/`, `src/config/`, `app/api/` route handlers).
+- Background work is async: webhook handlers fire-and-forget via `child_process.spawn()` of `.mjs` scripts; the web process itself stays responsive.
 
 ## Webhooks under burst load
 
@@ -41,6 +48,8 @@ This aligns with [[GHL-Multi-Location-Architecture]] (typed cursors, per-locatio
 
 ## Related
 
+- [[NextJS-Consolidation-Architecture]]
+- [[NextJS-Consolidation-Decision]]
 - [[Engineering-And-Ops-Direction]]
 - [[Product-Phase-Roadmap]]
 - [[GHL-Webhook-Pipeline]]

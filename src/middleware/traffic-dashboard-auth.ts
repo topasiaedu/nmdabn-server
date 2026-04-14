@@ -1,23 +1,34 @@
-import type { RequestHandler } from "express";
-import { env } from "../config/env";
+import type { NextRequest } from "next/server";
+import { env } from "@/config/env";
+import type { GuardFailure } from "@/types/http";
+
+export type TrafficLegacyAuthSuccess = { ok: true };
+
+export type TrafficLegacyAuthResult =
+  | TrafficLegacyAuthSuccess
+  | GuardFailure;
 
 /**
  * When TRAFFIC_DASHBOARD_API_KEY is set, requires matching `x-traffic-key` header.
- * When unset, allows access (use only in trusted networks / development).
+ * When unset, allows access (trusted networks / development only).
  */
-export const trafficDashboardAuth: RequestHandler = (req, res, next) => {
+export function requireTrafficLegacyKey(
+  request: NextRequest
+): TrafficLegacyAuthResult {
   const key = env.trafficDashboardApiKey;
   if (key === undefined || key === "") {
-    next();
-    return;
+    return { ok: true };
   }
-  const header = req.headers["x-traffic-key"];
-  if (typeof header === "string" && header === key) {
-    next();
-    return;
+  const header = request.headers.get("x-traffic-key");
+  if (header === key) {
+    return { ok: true };
   }
-  res.status(401).json({
-    success: false,
-    error: "Invalid or missing x-traffic-key header",
-  });
-};
+  return {
+    ok: false,
+    status: 401,
+    body: {
+      success: false,
+      error: "Invalid or missing x-traffic-key header",
+    },
+  };
+}

@@ -1,5 +1,20 @@
 import { createPublicKey, createVerify, verify } from "node:crypto";
-import type { IncomingHttpHeaders } from "node:http";
+
+/**
+ * Header bag compatible with Node `IncomingHttpHeaders` and plain objects built from `Headers` / `NextRequest`.
+ */
+export type WebhookHeaderBag = Record<string, string | string[] | undefined>;
+
+/**
+ * Builds a header bag from Fetch API `Headers` (e.g. `NextRequest.headers`) for signature verification.
+ */
+export function webhookHeaderBagFromHeaders(headers: Headers): WebhookHeaderBag {
+  const out: WebhookHeaderBag = {};
+  headers.forEach((value, key) => {
+    out[key] = value;
+  });
+  return out;
+}
 
 /**
  * Official HighLevel webhook signing keys (marketplace docs — Webhook Integration Guide).
@@ -16,7 +31,7 @@ const GHL_LEGACY_RSA_PUBLIC_KEY_PEM =
   "-----END PUBLIC KEY-----";
 
 function headerValue(
-  headers: IncomingHttpHeaders,
+  headers: WebhookHeaderBag,
   name: string
 ): string | undefined {
   const key = name.toLowerCase();
@@ -35,7 +50,7 @@ function headerValue(
  */
 export function verifyGhlWebhookSignature(
   rawBodyUtf8: string,
-  headers: IncomingHttpHeaders
+  headers: WebhookHeaderBag
 ): { ok: true } | { ok: false; reason: string } {
   const ghlSig = headerValue(headers, "x-ghl-signature");
   const legacySig = headerValue(headers, "x-wh-signature");

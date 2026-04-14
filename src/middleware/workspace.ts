@@ -1,129 +1,118 @@
-import { Response, NextFunction } from 'express';
-import { supabase } from '../config/supabase';
-import type { AuthenticatedRequest } from '../types';
+import type { NextRequest } from "next/server";
+import { supabase } from "@/config/supabase";
+import type { GuardFailure } from "@/types/http";
+import { authenticateRequest } from "./auth";
+
+export type WorkspaceMemberSuccess = {
+  ok: true;
+  workspaceId: string;
+};
+
+export type WorkspaceMemberResult = WorkspaceMemberSuccess | GuardFailure;
 
 /**
- * Middleware to validate workspace access
- * Extracts workspace_id from query/body/params and validates user membership
+ * Reads workspace id: query `workspace_id`, then `X-Workspace-Id` header, then JSON body `workspace_id`.
  */
-export async function validateWorkspaceAccess(
-  req: AuthenticatedRequest,
-  res: Response,
-  next: NextFunction
-): Promise<void> {
+export function readWorkspaceId(
+  request: NextRequest,
+  body?: Record<string, unknown>
+): string | undefined {
+  const q = request.nextUrl.searchParams.get("workspace_id");
+  if (q !== null && q.trim() !== "") {
+    return q.trim();
+  }
+  const headerWs = request.headers.get("x-workspace-id");
+  if (headerWs !== null && headerWs.trim() !== "") {
+    return headerWs.trim();
+  }
+  if (body !== undefined) {
+    const w = body["workspace_id"];
+    if (typeof w === "string" && w.trim() !== "") {
+      return w.trim();
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Ensures the user is a member of the given workspace.
+ */
+export async function requireWorkspaceMember(
+  userId: string,
+  workspaceIdRaw: string | undefined
+): Promise<WorkspaceMemberResult> {
   try {
-    if (!req.user) {
-      res.status(401).json({
-        success: false,
-        error: 'User not authenticated',
-      });
-      return;
+    if (workspaceIdRaw === undefined || workspaceIdRaw === "") {
+      return {
+        ok: false,
+        status: 400,
+        body: {
+          success: false,
+          error: "workspace_id is required",
+        },
+      };
     }
 
-    // Extract workspace_id from various sources
-    const workspaceId = 
-      req.params.workspaceId || 
-      req.query.workspace_id || 
-      req.body.workspace_id;
-
-    if (!workspaceId || typeof workspaceId !== 'string') {
-      res.status(400).json({
-        success: false,
-        error: 'workspace_id is required',
-      });
-      return;
-    }
-
-    // Check if user is a member of this workspace
     const { data: membership, error } = await supabase
-      .from('workspace_members')
-      .select('id, role')
-      .eq('workspace_id', workspaceId)
-      .eq('user_id', req.user.id)
+      .from("workspace_members")
+      .select("id, role")
+      .eq("workspace_id", workspaceIdRaw)
+      .eq("user_id", userId)
       .single();
 
-    if (error || !membership) {
-      res.status(403).json({
-        success: false,
-        error: 'Access denied: User is not a member of this workspace',
-      });
-      return;
+    if (error !== null || membership === null) {
+      return {
+        ok: false,
+        status: 403,
+        body: {
+          success: false,
+          error: "Access denied: User is not a member of this workspace",
+        },
+      };
     }
 
-    // Attach workspace_id to request for downstream use
-    req.workspaceId = workspaceId;
-
-    next();
-  } catch (error) {
-    console.error('Workspace validation error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Internal server error during workspace validation',
-    });
+    return { ok: true, workspaceId: workspaceIdRaw };
+  } catch (e) {
+    console.error("Workspace validation error:", e);
+    return {
+      ok: false,
+      status: 500,
+      body: {
+        success: false,
+        error: "Internal server error during workspace validation",
+      },
+    };
   }
 }
 
 /**
- * Optional workspace validation - doesn't fail if workspace_id is missing
- * Used for endpoints where workspace filtering is optional
+ * Authenticated user + workspace membership using query/body workspace_id.
  */
-export async function optionalWorkspaceAccess(
-  req: AuthenticatedRequest,
-  res: Response,
-  next: NextFunction
-): Promise<void> {
-  try {
-    if (!req.user) {
-      res.status(401).json({
-        success: false,
-        error: 'User not authenticated',
-      });
-      return;
+export async function requireAuthAndWorkspace(
+  request: NextRequest,
+  body?: Record<string, unknown>
+): Promise<
+  | {
+      ok: true;
+      userId: string;
+      email: string;
+      workspaceId: string;
     }
-
-    const workspaceId = 
-      req.params.workspaceId || 
-      req.query.workspace_id || 
-      req.body.workspace_id;
-
-    if (!workspaceId) {
-      // No workspace specified, continue without validation
-      next();
-      return;
-    }
-
-    if (typeof workspaceId !== 'string') {
-      res.status(400).json({
-        success: false,
-        error: 'Invalid workspace_id format',
-      });
-      return;
-    }
-
-    // Check membership
-    const { data: membership, error } = await supabase
-      .from('workspace_members')
-      .select('id, role')
-      .eq('workspace_id', workspaceId)
-      .eq('user_id', req.user.id)
-      .single();
-
-    if (error || !membership) {
-      res.status(403).json({
-        success: false,
-        error: 'Access denied: User is not a member of this workspace',
-      });
-      return;
-    }
-
-    req.workspaceId = workspaceId;
-    next();
-  } catch (error) {
-    console.error('Optional workspace validation error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Internal server error during workspace validation',
-    });
+  | GuardFailure
+> {
+  const auth = await authenticateRequest(request);
+  if (!auth.ok) {
+    return auth;
   }
+  const ws = readWorkspaceId(request, body);
+  const member = await requireWorkspaceMember(auth.userId, ws);
+  if (!member.ok) {
+    return member;
+  }
+  return {
+    ok: true,
+    userId: auth.userId,
+    email: auth.email,
+    workspaceId: member.workspaceId,
+  };
 }
-

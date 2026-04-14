@@ -1,34 +1,36 @@
 {
   "name": "nmdabn-server",
   "version": "1.0.0",
-  "description": "NMDABN backend API (Express + TypeScript)",
-  "main": "dist/index.js",
+  "private": true,
+  "description": "NMDABN Next.js app (API Route Handlers + Traffic dashboard)",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
-    "build": "tsc",
-    "start": "node dist/index.js",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
     "type-check": "tsc --noEmit",
-    "dev:frontend": "npm run dev --prefix frontend",
     "sync-ghl-contacts": "node --env-file=.env scripts/sync-ghl-contacts-to-supabase.mjs",
     "sync-ghl-orders-invoices": "node --env-file=.env scripts/sync-ghl-orders-invoices-to-supabase.mjs",
-    "backfill-webinar-runs": "node --env-file=.env scripts/backfill-webinar-runs.mjs"
+    "backfill-webinar-runs": "node --env-file=.env scripts/backfill-webinar-runs.mjs",
+    "sync-zoom-participants": "node --env-file=.env scripts/sync-zoom-participants.mjs"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@supabase/supabase-js": "^2.39.0",
-    "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
-    "express": "^4.18.2",
+    "@supabase/supabase-js": "^2.57.4",
     "googleapis": "^129.0.0",
-    "helmet": "^7.1.0"
+    "next": "^15.3.2",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
   },
   "devDependencies": {
-    "@types/cors": "^2.8.17",
-    "@types/express": "^4.17.21",
-    "@types/node": "^20.10.6",
-    "ts-node-dev": "^2.0.0",
-    "typescript": "^5.3.3"
+    "@tailwindcss/postcss": "^4.2.2",
+    "@types/node": "^22.15.24",
+    "@types/react": "^19.1.6",
+    "@types/react-dom": "^19.1.5",
+    "autoprefixer": "^10.4.27",
+    "postcss": "^8.5.9",
+    "tailwindcss": "^4.2.2",
+    "typescript": "^5.8.3"
   }
 }

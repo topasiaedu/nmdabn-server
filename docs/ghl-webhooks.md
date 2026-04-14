@@ -1,6 +1,6 @@
 # GoHighLevel webhooks → Supabase mirrors (contacts + billing)
 
-When the API server is running with GHL environment variables set, it exposes an endpoint that HighLevel can call whenever records change. The handler verifies the request (when signatures are present), then:
+When the API server is running (Supabase configured), it exposes an endpoint that HighLevel can call whenever records change. Credentials come from **`ghl_connections`** rows (migration `010`, matched by payload `locationId`) or, as a fallback, **`GHL_PRIVATE_INTEGRATION_TOKEN`** + **`GHL_LOCATION_ID`** in the environment (with a console warning). The handler verifies the request (when signatures are present), then:
 
 - **Contacts:** re-fetches the contact and runs the same upsert as `npm run sync-ghl-contacts`, or deletes on `ContactDelete`.
 - **Orders/Invoices:** re-fetches the record and runs the billing mirror upsert path from `npm run sync-ghl-orders-invoices` (single-id mode).
@@ -24,19 +24,20 @@ Same as bulk sync, plus an optional dev-only flag:
 |----------|----------|---------|
 | `SUPABASE_URL` | Yes | Already required by the server |
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes | Already required by the server |
-| `GHL_PRIVATE_INTEGRATION_TOKEN` | Yes for webhooks | Private integration token used to `GET /contacts/{id}` after each event |
-| `GHL_LOCATION_ID` | Yes for webhooks | Sub-account location; payloads with a different `locationId` are ignored |
+| `GHL_CONNECTION_TOKEN_ENCRYPTION_KEY` | Yes if using `ghl_connections` | 32-byte key (base64 or 64 hex chars) to decrypt stored tokens |
+| `GHL_PRIVATE_INTEGRATION_TOKEN` | Optional fallback | Used when no `ghl_connections` row matches the payload `locationId` but `locationId` equals this env location (or payload omits `locationId`) |
+| `GHL_LOCATION_ID` | Optional fallback | Pair with `GHL_PRIVATE_INTEGRATION_TOKEN` for single-location mode |
 | `GHL_API_VERSION_CONTACTS` | No | Default `2021-07-28` (passed to contact GET calls) |
 | `GHL_API_VERSION_PAYMENTS` | No | Default `2021-07-28` (passed to order/invoice GET calls) |
 | `GHL_ORDERS_LIST_PATH` / `GHL_ORDERS_DETAIL_PATH_TEMPLATE` | No | Optional payments endpoint overrides used by billing sync script |
 | `GHL_INVOICES_LIST_PATH` / `GHL_INVOICES_DETAIL_PATH_TEMPLATE` | No | Optional payments endpoint overrides used by billing sync script |
 | `GHL_WEBHOOK_SKIP_VERIFY` | No | If `true` or `1`, signature checks are skipped **only when** `NODE_ENV` is not `production`. For local testing tools that cannot send `X-GHL-Signature` / `X-WH-Signature`. **Never enable in production.** |
 
-If `GHL_PRIVATE_INTEGRATION_TOKEN` or `GHL_LOCATION_ID` is missing, `env.ghl` is undefined and the endpoint responds with **503** (GHL not configured).
+If neither a matching **`ghl_connections`** row nor env fallback credentials apply, mutating events respond **200** with `{ skipped: true, reason: "unknown_location" }` (or `decrypt_failed` / `decrypt_key_missing` / `connection_lookup_failed` when applicable). Unhandled event types still return **200** `ignored`.
 
 ## Signature verification
 
-HighLevel signs the **exact** JSON body. The server registers this route with `express.raw()` so the verification step uses the same bytes as the platform. Official details and public keys are in the [Webhook Integration Guide](https://marketplace.gohighlevel.com/docs/webhook/WebhookIntegrationGuide/index.html):
+HighLevel signs the **exact** JSON body. The Next.js Route Handler reads the body with `Buffer.from(await request.arrayBuffer())` (no prior JSON parsing) so verification uses the same bytes as the platform. Official details and public keys are in the [Webhook Integration Guide](https://marketplace.gohighlevel.com/docs/webhook/WebhookIntegrationGuide/index.html):
 
 - Prefer **`X-GHL-Signature`** (Ed25519).
 - Fall back to **`X-WH-Signature`** (RSA-SHA256) during the legacy transition.
@@ -47,12 +48,12 @@ Implementation: `src/services/ghl-webhook-signature.ts` (keys match the current 
 
 1. **Verify** signature (unless skip-verify is allowed in non-production).
 2. **Parse** JSON; read `type`, `data`, `webhookId`.
-3. If `data.locationId` (or nested contact `locationId`) does not match `GHL_LOCATION_ID`, respond **200** with `skipped: true` (no sync).
+3. For mutating event types only: resolve credentials — **lookup** active `ghl_connections` by `data.locationId` (also checks nested `contact`, `order`, `invoice` for `locationId`). If none, **fallback** to env `GHL_*` when the payload location matches `GHL_LOCATION_ID` or when the payload has no `locationId`. Otherwise **200** `skipped: true` with a `reason` string.
 4. **`ContactDelete`**: delete from `public.ghl_contacts` (child tables cascade per migration `003`).
-5. **`ContactCreate`**, **`ContactUpdate`**, **`ContactTagUpdate`**, **`ContactDndUpdate`**: resolve contact id and run `scripts/sync-ghl-contacts-to-supabase.mjs --contact-id=<id>`.
-6. **`OrderCreate`**, **`OrderUpdate`**, **`OrderPaymentStatusUpdate`**: resolve order id and run `scripts/sync-ghl-orders-invoices-to-supabase.mjs --order-id=<id>`.
-7. **`InvoiceCreate`**, **`InvoiceUpdate`**, **`InvoicePaymentStatusUpdate`**: resolve invoice id and run `scripts/sync-ghl-orders-invoices-to-supabase.mjs --invoice-id=<id>`.
-8. **Other event types**: **200** with `ignored: true`.
+5. **`ContactCreate`**, **`ContactUpdate`**, **`ContactTagUpdate`**, **`ContactDndUpdate`**: resolve contact id and run `scripts/sync-ghl-contacts-to-supabase.mjs --contact-id=<id>` with per-event `GHL_PRIVATE_INTEGRATION_TOKEN` / `GHL_LOCATION_ID` in the child env.
+6. **`OrderCreate`**, **`OrderUpdate`**, **`OrderPaymentStatusUpdate`**: resolve order id and run `scripts/sync-ghl-orders-invoices-to-supabase.mjs --order-id=<id>` (same env injection).
+7. **`InvoiceCreate`**, **`InvoiceUpdate`**, **`InvoicePaymentStatusUpdate`**: resolve invoice id and run `scripts/sync-ghl-orders-invoices-to-supabase.mjs --invoice-id=<id>` (same env injection).
+8. **Other event types**: **200** with `ignored: true` (no credential resolution).
 
 ## Local development
 

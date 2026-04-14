@@ -1,53 +1,80 @@
-import { Request, Response, NextFunction } from 'express';
-import { supabase } from '../config/supabase';
-import type { AuthenticatedRequest } from '../types';
+import type { NextRequest } from "next/server";
+import { supabase } from "@/config/supabase";
+import type { GuardFailure } from "@/types/http";
+
+export type AuthSuccess = {
+  ok: true;
+  userId: string;
+  email: string;
+};
+
+export type AuthResult = AuthSuccess | GuardFailure;
 
 /**
- * Middleware to verify Supabase JWT token from Authorization header
- * Attaches user info to request object
+ * Verifies Supabase JWT from `Authorization: Bearer` on the request.
  */
-export async function authenticateUser(
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> {
+export async function authenticateRequest(
+  request: NextRequest
+): Promise<AuthResult> {
   try {
-    const authHeader = req.headers.authorization;
-
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      res.status(401).json({
-        success: false,
-        error: 'Missing or invalid authorization header',
-      });
-      return;
+    const authHeader = request.headers.get("authorization");
+    if (
+      authHeader === null ||
+      !authHeader.toLowerCase().startsWith("bearer ")
+    ) {
+      return {
+        ok: false,
+        status: 401,
+        body: {
+          success: false,
+          error: "Missing or invalid authorization header",
+        },
+      };
     }
 
-    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
-
-    // Verify the JWT token with Supabase
-    const { data: { user }, error } = await supabase.auth.getUser(token);
-
-    if (error || !user) {
-      res.status(401).json({
-        success: false,
-        error: 'Invalid or expired token',
-      });
-      return;
+    const token = authHeader.slice(7).trim();
+    if (token === "") {
+      return {
+        ok: false,
+        status: 401,
+        body: {
+          success: false,
+          error: "Missing or invalid authorization header",
+        },
+      };
     }
 
-    // Attach user info to request
-    (req as AuthenticatedRequest).user = {
-      id: user.id,
-      email: user.email || '',
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser(token);
+
+    if (error !== null || user === null) {
+      return {
+        ok: false,
+        status: 401,
+        body: {
+          success: false,
+          error: "Invalid or expired token",
+        },
+      };
+    }
+
+    return {
+      ok: true,
+      userId: user.id,
+      email: user.email ?? "",
     };
-
-    next();
-  } catch (error) {
-    console.error('Authentication error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Internal server error during authentication',
-    });
+  } catch (e) {
+    console.error("Authentication error:", e);
+    return {
+      ok: false,
+      status: 500,
+      body: {
+        success: false,
+        error: "Internal server error during authentication",
+      },
+    };
   }
 }
 

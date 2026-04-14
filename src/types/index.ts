@@ -1,4 +1,3 @@
-import type { Request } from "express";
 import type { Database } from "../database.types";
 
 // Database table types
@@ -17,15 +16,6 @@ export type WorkspaceMember = Database['public']['Tables']['workspace_members'][
 // Enums
 export type IntegrationProvider = Database['public']['Enums']['integration_provider'];
 export type IntegrationJobStatus = Database['public']['Enums']['integration_job_status'];
-
-// Request types with authenticated user context
-export interface AuthenticatedRequest extends Request {
-  user?: {
-    id: string;
-    email: string;
-  };
-  workspaceId?: string;
-}
 
 // API Response types
 export interface ApiResponse<T = unknown> {

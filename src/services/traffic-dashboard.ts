@@ -193,8 +193,8 @@ export async function buildTrafficDashboardPayload(input: {
     p_location_id: input.locationId,
     p_line_tags: input.lineTags,
     p_occupation_field_id: input.occupationFieldId,
-    p_date_from: input.dateFrom,
-    p_date_to: input.dateTo,
+    p_date_from: input.dateFrom ?? undefined,
+    p_date_to: input.dateTo ?? undefined,
   };
 
   const { data: occData, error: occErr } = await supabase.rpc(
@@ -211,8 +211,8 @@ export async function buildTrafficDashboardPayload(input: {
     {
       p_location_id: input.locationId,
       p_line_tags: input.lineTags,
-      p_date_from: input.dateFrom,
-      p_date_to: input.dateTo,
+      p_date_from: input.dateFrom ?? undefined,
+      p_date_to: input.dateTo ?? undefined,
     }
   );
 

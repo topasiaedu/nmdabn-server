@@ -11,10 +11,14 @@
             "id": "de973b344a424a92",
             "type": "leaf",
             "state": {
-              "type": "graph",
-              "state": {},
-              "icon": "lucide-git-fork",
-              "title": "Graph view"
+              "type": "markdown",
+              "state": {
+                "file": "raw/sources/2026-04-13-phase1-execution-plan-and-zoom-webinar-design.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "2026-04-13-phase1-execution-plan-and-zoom-webinar-design"
             }
           }
         ]
@@ -178,6 +182,8 @@
   },
   "active": "de973b344a424a92",
   "lastOpenFiles": [
+    "index.md",
+    "concepts/NextJS-Consolidation-Architecture.md",
     "concepts/Platform-Engineering-Direction.md",
     "sources/Engineering-And-Ops-Direction.md",
     "raw/sources/2026-04-07-engineering-and-ops-direction.md",
@@ -190,7 +196,6 @@
     "sources/Sales-Tracking-Dashboard-Spec-From-Sheet-Exports.md",
     "raw/sources/[Dr Jasmine] Sales Tracking by NM.xlsx",
     "raw/sources/Phase-1-Better-Data-Faster-Decisions.pdf",
-    "index.md",
     "concepts/GHL-Multi-Location-Architecture.md",
     "concepts/GHL-Contacts-Sync-Reliability.md",
     "sources/Multi-Location-GHL-Architecture-Recommendation.md",
@@ -205,7 +210,6 @@
     "sources/Database-README.md",
     "sources/Docs-README.md",
     "raw/sources/2026-04-07-repo-archive-projects-and-docs-update.md",
-    "raw/sources/2026-04-07-repo-archive-documentation-update-summary.md",
     "concepts",
     "sources",
     "raw/sources",

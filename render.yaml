@@ -1,0 +1,59 @@
+services:
+  - type: web
+    name: nmdabn-server
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
+      - key: GHL_CONNECTION_TOKEN_ENCRYPTION_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        sync: false
+
+  - type: cron
+    name: nmdabn-ghl-daily-sync
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    schedule: "0 2 * * *"
+    # Calls POST /api/actions/sync/ghl once daily at 02:00 UTC.
+    # Set SYNC_WORKSPACE_ID and SYNC_BEARER_TOKEN in Render env vars for this cron service.
+    # The CMD below overrides the web server entrypoint.
+    dockerCommand: >
+      node -e "
+        const token = process.env.SYNC_BEARER_TOKEN;
+        const wsId  = process.env.SYNC_WORKSPACE_ID;
+        const host  = process.env.SYNC_HOST || 'http://localhost:3000';
+        if (!token || !wsId) { console.error('SYNC_BEARER_TOKEN and SYNC_WORKSPACE_ID are required'); process.exit(1); }
+        fetch(host + '/api/actions/sync/ghl', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token, 'X-Workspace-Id': wsId },
+          body: JSON.stringify({ workspace_id: wsId })
+        }).then(r => r.json()).then(j => { console.log(JSON.stringify(j)); if (!j.success) process.exit(1); }).catch(e => { console.error(e); process.exit(1); });
+      "
+    envVars:
+      - key: SYNC_HOST
+        sync: false
+      - key: SYNC_BEARER_TOKEN
+        sync: false
+      - key: SYNC_WORKSPACE_ID
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: GHL_CONNECTION_TOKEN_ENCRYPTION_KEY
+        sync: false

@@ -15,8 +15,9 @@ Run them in order in your Postgres host (e.g. Supabase SQL Editor) when you adop
 | [migrations/007_traffic_dashboard_functions.sql](migrations/007_traffic_dashboard_functions.sql) | **Traffic RPCs:** assign/backfill webinar run, `traffic_occupation_breakdown`, `traffic_lead_source_breakdown` |
 | [migrations/008_project_ghl_traffic_settings.sql](migrations/008_project_ghl_traffic_settings.sql) | **Projects:** `ghl_location_id`, `traffic_occupation_field_id`, optional `traffic_agency_line_tags` JSONB per sub-account |
 | [migrations/009_ghl_custom_fields_catalog.sql](migrations/009_ghl_custom_fields_catalog.sql) | **Custom field catalog:** `ghl_custom_fields` + project `traffic_occupation_field_key` for key/name-based mapping |
+| [migrations/010_ghl_connections.sql](migrations/010_ghl_connections.sql) | **Multi-location GHL:** `ghl_connections` (per-project location + encrypted token); webhook + sync resolve credentials by `ghl_location_id` |
 
-Add new files as `010_…`, etc.
+Add new files as `011_…`, etc.
 
 **Traffic dashboard:** after `006`–`007`, insert rows into `webinar_runs` for your location (dates + labels). Run `npm run backfill-webinar-runs` once (or set `TRAFFIC_BACKFILL_AFTER_FULL_SYNC=1` during a full contact sync) to populate `webinar_run_id`. See [../traffic-dashboard.md](../traffic-dashboard.md).
 
@@ -24,7 +25,9 @@ Add new files as `010_…`, etc.
 
 **Billing sync:** after `005`, run `npm run sync-ghl-orders-invoices`. This mirrors orders/invoices into typed columns and keeps full payloads in `raw_json`. Endpoint paths are configurable via `.env` in case your GHL account uses different payments endpoints.
 
-**Webhooks:** with the API server running and GHL variables in `.env`, point HighLevel at `POST /api/webhooks/ghl` on your public base URL. See [../ghl-webhooks.md](../ghl-webhooks.md).
+**Webhooks:** with the API server running, point HighLevel at `POST /api/webhooks/ghl`. Credentials come from **`ghl_connections`** rows (matched by payload `locationId`) or, as a fallback, `GHL_PRIVATE_INTEGRATION_TOKEN` + `GHL_LOCATION_ID` in `.env` (warns in logs). See [../ghl-webhooks.md](../ghl-webhooks.md).
+
+**GHL connection encryption:** set `GHL_CONNECTION_TOKEN_ENCRYPTION_KEY` (32-byte key, base64 or 64-char hex) when inserting tokens into `ghl_connections`; see root `.env.example`.
 
 **Note:** The original `contacts` table (in your live Supabase project) was created without first-class attribution columns—only a generic `metadata` jsonb. Use `002_contact_attribution.sql` when you want queryable fields for reporting; you can still keep a copy of the full payload in `metadata` if integrations send more than these columns.
 

@@ -16,7 +16,7 @@ Each **workspace project** can map to one **GoHighLevel sub-account** (location)
 
 3. Run `npm run sync-ghl-contacts` at least once per location so `ghl_custom_fields` is populated.
 4. Insert **`webinar_runs`** for each **`ghl_location_id`** you use in reporting.
-5. **Backfill** `ghl_contacts.webinar_run_id` per location (`npm run backfill-webinar-runs` still uses **one** `GHL_LOCATION_ID` in `.env` — run once per location or extend scripts later).
+5. **Backfill** `ghl_contacts.webinar_run_id` per location: `npm run backfill-webinar-runs` with `GHL_LOCATION_ID` in `.env`, **or** `node --env-file=.env scripts/backfill-webinar-runs.mjs --project-id=<uuid>` / `--connection-id=<uuid>` (requires migration **010** and `GHL_CONNECTION_TOKEN_ENCRYPTION_KEY`).
 
 ### API (Bearer JWT)
 
