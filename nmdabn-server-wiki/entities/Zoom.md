@@ -10,5 +10,6 @@
 ## Related wiki
 
 - [[Buyer-Journey-Event-Store]]
+- [[Zoom-Attendance-Segments-And-Journey]] (planned: segment table + journey rollup)
 - [[Buyer-Journey-Tracking-Zoom-GHL-First-Party]]
 - [[Sales-Tracking-Dashboard-Model]]

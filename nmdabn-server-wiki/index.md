@@ -19,6 +19,7 @@
 
 | File | Summary |
 |------|---------|
+| [2026-04-14-ui-ux-audit-and-redesign-spec.md](raw/sources/2026-04-14-ui-ux-audit-and-redesign-spec.md) | Full UI/UX audit of live app (all pages). 4 critical issues, 5 major, 6 moderate. 12 redesign specs (R1–R12) covering nav, auth guard, filter bar, visual system, settings IA, empty states, KPI cards. NM Media multi-brand context clarified. |
 | [2026-04-07-repo-ghl-webhooks.md](raw/sources/2026-04-07-repo-ghl-webhooks.md) | Frozen snapshot of repo `docs/ghl-webhooks.md` (GHL → Supabase webhooks). |
 | [2026-04-07-repo-docs-readme.md](raw/sources/2026-04-07-repo-docs-readme.md) | Snapshot pointer for `docs/README.md` (ownership split and conventions). |
 | [2026-04-07-repo-database-readme.md](raw/sources/2026-04-07-repo-database-readme.md) | Snapshot pointer for `docs/database/README.md` migration manifest. |
@@ -35,6 +36,8 @@
 | [2026-04-13-traffic-dashboard-next-frontend-handoff.md](raw/sources/2026-04-13-traffic-dashboard-next-frontend-handoff.md) | Handoff: Traffic dashboard API + SQL paths, Next.js frontend layout, env vars (`NEXT_PUBLIC_*`), local run and security notes (no secrets). |
 | [2026-04-13-phase1-execution-plan-and-zoom-webinar-design.md](raw/sources/2026-04-13-phase1-execution-plan-and-zoom-webinar-design.md) | Full Phase 1 build order (10 steps), Zoom S2S integration decisions, per-project Zoom accounts, journey_events schema, and 4 open decisions blocking completion. |
 | [2026-04-13-nextjs-consolidation-decision.md](raw/sources/2026-04-13-nextjs-consolidation-decision.md) | Decision to consolidate Express + Next.js into a single Next.js app. Rationale, directory structure before/after, route map, migration patterns, merged package.json. |
+| [2026-04-13-dashboard-architecture-redesign-all-runs.md](raw/sources/2026-04-13-dashboard-architecture-redesign-all-runs.md) | Full implementation record: all-runs column table redesign (15 tasks), migrations 019–021, ProjectContext, ColumnTable, pivot utilities, API rewrites, and backfill bug fix (5,061 contacts). |
+| [2026-04-15-zoom-attendance-segments-journey-design.md](raw/sources/2026-04-15-zoom-attendance-segments-journey-design.md) | Planned Zoom data model: `zoom_attendance_segments` + `journey_events` rollup; Show Up binary rule; app-only contacts; audience curve + optional recording scrub UX (not implemented). |
 
 ### Raw assets (non-markdown, `raw/sources/`)
 
@@ -63,6 +66,8 @@
 | [[Engineering-And-Ops-Direction]] | Monorepo layout, Render/Docker, modular monolith, webhook burst pattern, VAPI out of scope, per-project creds. |
 | [[Phase-1-Execution-Plan-And-Zoom-Design]] | Full Phase 1 build order, Zoom S2S design decisions, journey_events schema, open decisions register. |
 | [[NextJS-Consolidation-Decision]] | Decision to consolidate into Next.js only. Rationale: event-driven ingestion model, no continuous loops needed. |
+| [[Dashboard-Architecture-Redesign-All-Runs]] | Implementation record: all-runs column table, migrations 019–021, ProjectContext, ColumnTable, API rewrites, and backfill bug fix. |
+| [[Zoom-Attendance-Segments-And-Journey-Design]] | Ingest of 2026-04-15 raw: segment table vs journey rollup, Show Up rules, app-only contacts, recording UX scope. |
 
 ## Concepts (`concepts/`)
 
@@ -72,20 +77,29 @@
 | [[GHL-Webhook-Security]] | Ed25519 vs RSA legacy, skip-verify guardrails, failure modes. |
 | [[Express-Raw-Webhook-Body]] | Why raw middleware before verify; proxy rules. |
 | [[GHL-Sync-Operations]] | Bulk npm vs webhook spawn; idempotency; scale / queue notes. |
-| [[Supabase-GHL-Mirror]] | Migrations 001–005 summary; dual-layer mirror; sync entry points. |
+| [[Supabase-GHL-Mirror]] | Migrations 001–005 + 019–021 summary; dual-layer mirror; sync entry points. Updated 2026-04-13. |
 | [[SQL-First-Data-Layer]] | Columns-first philosophy for GHL mirror; link to `data-sync-principles.md`. |
 | [[Documentation-Lineage]] | Current-vs-archive documentation timeline and precedence rule. |
 | [[GHL-Contacts-Sync-Reliability]] | Practical reliability model for contacts sync pagination, retries, and throughput tuning. |
 | [[GHL-Multi-Location-Architecture]] | Target architecture for multi-project/multi-location GHL routing and sync execution. |
 | [[Sales-Tracking-Dashboard-Model]] | Atomic facts + dimensions model for four logical dashboards. |
 | [[Product-Phase-Roadmap]] | Phases 1–3 and engineering enablers (synthesis). |
-| [[Buyer-Journey-Event-Store]] | `journey_events` decided schema (migration 011) and Zoom attendance ingest path. Updated 2026-04-13. |
+| [[Buyer-Journey-Event-Store]] | `journey_events` decided schema (migration 011) and Zoom attendance ingest path. Updated 2026-04-15: planned segment table + rollup (see Zoom-Attendance-Segments-And-Journey). |
+| [[Zoom-Attendance-Segments-And-Journey]] | Planned: `zoom_attendance_segments` for join/leave + charts; `journey_events` for attended rollup; app-only contacts; recording scrub UX. |
 | [[Platform-Engineering-Direction]] | Updated 2026-04-13: single Next.js app (no separate Express), one Render service, async webhooks, cron for scheduled syncs. |
 | [[Zoom-Integration-Architecture]] | Zoom S2S OAuth flow, per-project credential chain, token caching, API endpoints, security notes. |
 | [[Webinar-Run-Zoom-Linkage]] | Explicit `zoom_meeting_id` on `webinar_runs`; `zoom_source_type` field; sync service logic. |
 | [[Phase-1-Build-Order]] | Ordered execution plan (Step 1 ✅ done → Migration Step → Steps 2–10) with Next.js consolidation incorporated. |
 | [[Phase-1-Open-Decisions]] | Four unresolved decisions blocking Phase 1 completion: ad spend source, showed denominator, encryption, backfill scope. |
 | [[NextJS-Consolidation-Architecture]] | Full agent implementation guide: file moves, route map, migration patterns (raw body, auth helpers, params, env), merged package.json, Dockerfile. |
+|| [[UI-Design-System]] | Complete visual design language: colour tokens, typography, 4 button variants, input fields, cards, tables with rate badges, KPI stat card anatomy, lucide-react icon map, loading states. |
+|| [[App-Navigation-Structure]] | Global nav bar redesign: sticky 56px header, left zone (wordmark + dashboard tabs with icons), right zone (Setup link + user avatar dropdown with Sign Out). Replaces current NavTabs. |
+|| [[Settings-IA-Redesign]] | Full settings restructure: SettingsShell auth guard component, two-panel sidebar layout, General/Integrations pages, per-project 5-tab layout (Overview/GHL/Zoom/Webinar Runs/Traffic Config). |
+|| [[Dashboard-UX-Patterns]] | ⚠ Partially superseded 2026-04-13: filter bar, run selector, date range removed. KPI cards, empty state hierarchy, pill toggles, page titles remain valid design intent. |
+|| [[All-Runs-Column-Table]] | New dashboard paradigm: all runs as date-labeled columns, ColumnTable component, pivot utilities, all-runs RPCs. Supersedes single-run filtered view. |
+|| [[Project-Context-Global-State]] | ProjectContext: global workspace+project state, localStorage persistence, project selector in nav bar. |
+|| [[Traffic-Breakdown-Fields]] | `traffic_breakdown_fields` JSONB per-project config replacing hardcoded occupation field. Resolution via `ghl_custom_fields`; ShowUp fallback when empty. |
+|| [[Webinar-Run-Contact-Assignment]] | `ghl_contacts.webinar_run_id` assignment mechanics; backfill RPC; bulk sync now auto-backfills. Backfill bug (5,061 contacts with null run_id) found and fixed 2026-04-13. |
 
 ## Entities (`entities/`)
 

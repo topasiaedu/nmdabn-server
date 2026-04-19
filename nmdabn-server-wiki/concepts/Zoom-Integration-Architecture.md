@@ -64,6 +64,7 @@ Both return paginated results via `next_page_token`. The sync service must follo
 
 ## Related
 
+- [[Zoom-Attendance-Segments-And-Journey]] (planned segment ingest + recording UX notes)
 - [[Webinar-Run-Zoom-Linkage]]
 - [[Phase-1-Execution-Plan-And-Zoom-Design]]
 - [[Buyer-Journey-Event-Store]]

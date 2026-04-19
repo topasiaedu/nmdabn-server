@@ -390,6 +390,7 @@ export type Database = {
         Row: {
           address1: string | null
           api_top_level_extras: Json
+          app_only_project_id: string | null
           assigned_to: string | null
           business_id: string | null
           city: string | null
@@ -406,6 +407,7 @@ export type Database = {
           first_name_raw: string | null
           full_name: string | null
           id: string
+          is_app_only: boolean
           last_name: string | null
           last_name_raw: string | null
           location_id: string
@@ -425,6 +427,7 @@ export type Database = {
         Insert: {
           address1?: string | null
           api_top_level_extras?: Json
+          app_only_project_id?: string | null
           assigned_to?: string | null
           business_id?: string | null
           city?: string | null
@@ -441,6 +444,7 @@ export type Database = {
           first_name_raw?: string | null
           full_name?: string | null
           id: string
+          is_app_only?: boolean
           last_name?: string | null
           last_name_raw?: string | null
           location_id: string
@@ -460,6 +464,7 @@ export type Database = {
         Update: {
           address1?: string | null
           api_top_level_extras?: Json
+          app_only_project_id?: string | null
           assigned_to?: string | null
           business_id?: string | null
           city?: string | null
@@ -476,6 +481,7 @@ export type Database = {
           first_name_raw?: string | null
           full_name?: string | null
           id?: string
+          is_app_only?: boolean
           last_name?: string | null
           last_name_raw?: string | null
           location_id?: string
@@ -493,6 +499,13 @@ export type Database = {
           website?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "ghl_contacts_app_only_project_id_fkey"
+            columns: ["app_only_project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "ghl_contacts_webinar_run_id_fkey"
             columns: ["webinar_run_id"]
@@ -1095,11 +1108,15 @@ export type Database = {
           id: string
           name: string
           traffic_agency_line_tags: Json | null
+          traffic_breakdown_fields: Json | null
           traffic_occupation_field_id: string | null
           traffic_occupation_field_key: string | null
           updated_at: string | null
           workspace_id: string
-          zoom_integration_account_id: string | null
+          zoom_account_id: string | null
+          zoom_client_id: string | null
+          zoom_client_secret_encrypted: string | null
+          zoom_user_id: string | null
         }
         Insert: {
           created_at?: string | null
@@ -1108,11 +1125,15 @@ export type Database = {
           id?: string
           name: string
           traffic_agency_line_tags?: Json | null
+          traffic_breakdown_fields?: Json | null
           traffic_occupation_field_id?: string | null
           traffic_occupation_field_key?: string | null
           updated_at?: string | null
           workspace_id: string
-          zoom_integration_account_id?: string | null
+          zoom_account_id?: string | null
+          zoom_client_id?: string | null
+          zoom_client_secret_encrypted?: string | null
+          zoom_user_id?: string | null
         }
         Update: {
           created_at?: string | null
@@ -1121,11 +1142,15 @@ export type Database = {
           id?: string
           name?: string
           traffic_agency_line_tags?: Json | null
+          traffic_breakdown_fields?: Json | null
           traffic_occupation_field_id?: string | null
           traffic_occupation_field_key?: string | null
           updated_at?: string | null
           workspace_id?: string
-          zoom_integration_account_id?: string | null
+          zoom_account_id?: string | null
+          zoom_client_id?: string | null
+          zoom_client_secret_encrypted?: string | null
+          zoom_user_id?: string | null
         }
         Relationships: [
           {
@@ -1133,13 +1158,6 @@ export type Database = {
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "projects_zoom_integration_account_id_fkey"
-            columns: ["zoom_integration_account_id"]
-            isOneToOne: false
-            referencedRelation: "integration_accounts"
             referencedColumns: ["id"]
           },
         ]
@@ -1199,6 +1217,76 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      zoom_attendance_segments: {
+        Row: {
+          contact_id: string | null
+          duration_seconds: number
+          id: string
+          idempotency_key: string
+          join_at: string
+          leave_at: string | null
+          location_id: string
+          participant_email: string | null
+          project_id: string
+          raw_payload: Json
+          synced_at: string
+          webinar_run_id: string
+          zoom_meeting_id: string
+        }
+        Insert: {
+          contact_id?: string | null
+          duration_seconds?: number
+          id?: string
+          idempotency_key: string
+          join_at: string
+          leave_at?: string | null
+          location_id: string
+          participant_email?: string | null
+          project_id: string
+          raw_payload?: Json
+          synced_at?: string
+          webinar_run_id: string
+          zoom_meeting_id: string
+        }
+        Update: {
+          contact_id?: string | null
+          duration_seconds?: number
+          id?: string
+          idempotency_key?: string
+          join_at?: string
+          leave_at?: string | null
+          location_id?: string
+          participant_email?: string | null
+          project_id?: string
+          raw_payload?: Json
+          synced_at?: string
+          webinar_run_id?: string
+          zoom_meeting_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "zoom_attendance_segments_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "ghl_contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "zoom_attendance_segments_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "zoom_attendance_segments_webinar_run_id_fkey"
+            columns: ["webinar_run_id"]
+            isOneToOne: false
+            referencedRelation: "webinar_runs"
             referencedColumns: ["id"]
           },
         ]
@@ -1371,6 +1459,68 @@ export type Database = {
           bigint_val: number | null
           numeric_val: number | null
           pct: number | null
+        }[]
+      }
+      get_traffic_all_runs: {
+        Args: {
+          p_project_id: string
+          p_workspace_id: string
+          p_line_tags?: string[] | null
+          /** Subset of utm_source, utm_medium, utm_campaign, utm_content (canonical order in RPC). */
+          p_utm_axes?: string[] | null
+        }
+        Returns: {
+          run_id: string
+          run_start_at: string
+          section_key: string
+          section_label: string
+          row_label: string
+          lead_count: number
+        }[]
+      }
+      get_showup_all_runs: {
+        Args: {
+          p_project_id: string
+          p_workspace_id: string
+        }
+        Returns: {
+          run_id: string
+          run_start_at: string
+          section_key: string
+          section_label: string
+          row_label: string
+          attended: number
+          total: number
+        }[]
+      }
+      get_buyer_behavior_all_runs: {
+        Args: {
+          p_project_id: string
+          p_workspace_id: string
+        }
+        Returns: {
+          run_id: string
+          run_start_at: string
+          section: string
+          label: string
+          count: number
+          pct: number | null
+        }[]
+      }
+      get_agency_all_runs: {
+        Args: {
+          p_project_id: string
+          p_workspace_id: string
+        }
+        Returns: {
+          run_id: string
+          run_start_at: string
+          agency_line: string
+          leads: number
+          showed: number
+          buyers: number
+          showup_rate: number | null
+          conv_rate: number | null
         }[]
       }
     }

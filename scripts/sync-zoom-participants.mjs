@@ -1,23 +1,27 @@
 /**
- * Pulls Zoom participant report for one webinar run and inserts journey_events rows.
- * Mirrors src/services/zoom-participants-sync.ts (kept in sync manually — no TS import).
+ * Pulls Zoom participant report for one webinar run; upserts `zoom_attendance_segments`
+ * and maintains one `journey_events` attended rollup per contact per run.
+ * Mirrors `src/services/zoom-participants-sync.ts` (kept in sync manually — no TS import).
  *
  * Usage:
  *   node --env-file=.env scripts/sync-zoom-participants.mjs --webinar-run-id=<uuid>
  *
  * Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, GHL_CONNECTION_TOKEN_ENCRYPTION_KEY
  */
+import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import {
   decryptGhlConnectionToken,
   parseGhlConnectionTokenEncryptionKey,
 } from "./lib/ghl-connection-token-crypto.mjs";
 
-const INSERT_CHUNK = 100;
 const ZOOM_PAGE_SIZE = "300";
 const CACHE_SAFETY_MARGIN_SEC = 300;
 const MIN_CACHE_TTL_MS = 60_000;
-const ZOOM_TOKEN_URL = "https://accounts.zoom.us/oauth/token";
+const ZOOM_TOKEN_URL = "https://zoom.us/oauth/token";
+
+/** Prefix for in-app contacts created from Zoom when email is not in GHL. */
+const APP_ONLY_CONTACT_PREFIX = "nmdapp-";
 
 /** @type {Map<string, { token: string; expiresAt: number }>} */
 const accessTokenCache = new Map();
@@ -54,6 +58,8 @@ function parseArgs() {
 }
 
 /**
+ * Normalizes Zoom report `duration` to whole seconds (missing → 0).
+ *
  * @param {unknown} raw
  * @returns {number}
  */
@@ -68,6 +74,75 @@ function durationToSeconds(raw) {
     }
   }
   return 0;
+}
+
+/**
+ * @param {Record<string, unknown>} participant
+ * @param {string} zoomMeetingId
+ * @returns {Record<string, unknown>}
+ */
+function buildPayload(participant, zoomMeetingId) {
+  return { ...participant, zoom_meeting_id: zoomMeetingId };
+}
+
+/**
+ * Zoom participant `id` or `user_id` when present, for idempotency without email.
+ *
+ * @param {Record<string, unknown>} participant
+ * @returns {string}
+ */
+function zoomParticipantStableId(participant) {
+  const idRaw = participant["id"];
+  if (typeof idRaw === "string" && idRaw.trim() !== "") {
+    return idRaw.trim();
+  }
+  const userRaw = participant["user_id"];
+  if (typeof userRaw === "string" && userRaw.trim() !== "") {
+    return userRaw.trim();
+  }
+  return "";
+}
+
+/**
+ * Stable key per webinar run + participant identity + join time (re-sync safe).
+ *
+ * @param {string} webinarRunId
+ * @param {Record<string, unknown>} participant
+ * @param {string} normalizedEmail
+ * @returns {string | null}
+ */
+function buildSegmentIdempotencyKey(webinarRunId, participant, normalizedEmail) {
+  const joinRaw = participant["join_time"];
+  const join =
+    typeof joinRaw === "string" && joinRaw.trim() !== ""
+      ? joinRaw.trim()
+      : "";
+  if (join === "") {
+    return null;
+  }
+  if (normalizedEmail !== "") {
+    return `${webinarRunId}|e:${normalizedEmail}|j:${join}`;
+  }
+  const zid = zoomParticipantStableId(participant);
+  if (zid !== "") {
+    return `${webinarRunId}|z:${zid}|j:${join}`;
+  }
+  return null;
+}
+
+/**
+ * @param {unknown} v
+ * @returns {string | null}
+ */
+function parseIsoTimestamptzOrNull(v) {
+  if (typeof v !== "string" || v.trim() === "") {
+    return null;
+  }
+  const ms = Date.parse(v.trim());
+  if (Number.isNaN(ms)) {
+    return null;
+  }
+  return new Date(ms).toISOString();
 }
 
 /**
@@ -165,60 +240,63 @@ async function exchangeZoomAccountCredentials(input) {
 }
 
 /**
+ * Fetches a Zoom access token for a project using credentials stored on the project row.
+ *
  * @param {import("@supabase/supabase-js").SupabaseClient} supabase
- * @param {string} integrationAccountId
+ * @param {string} projectId
  * @param {Buffer} key
  * @returns {Promise<string>}
  */
-async function getZoomAccessToken(supabase, integrationAccountId, key) {
-  const trimmedId = integrationAccountId.trim();
+async function getZoomAccessToken(supabase, projectId, key) {
+  const trimmedId = projectId.trim();
   if (trimmedId === "") {
-    throw new Error("integration_account_id is required");
+    throw new Error("project_id is required");
   }
 
+  const cacheKey = `project:${trimmedId}`;
   const now = Date.now();
-  const cached = accessTokenCache.get(trimmedId);
+  const cached = accessTokenCache.get(cacheKey);
   if (cached !== undefined && now < cached.expiresAt) {
     return cached.token;
   }
 
   const { data: row, error } = await supabase
-    .from("integration_accounts")
-    .select("id, client_id, account_id, client_secret_encrypted")
+    .from("projects")
+    .select("id, zoom_client_id, zoom_account_id, zoom_client_secret_encrypted")
     .eq("id", trimmedId)
     .maybeSingle();
 
   if (error !== null) {
-    throw new Error(`integration_accounts lookup failed: ${error.message}`);
+    throw new Error(`projects lookup failed: ${error.message}`);
   }
   if (row === null) {
-    throw new Error(`No integration_accounts row for id ${trimmedId}`);
+    throw new Error(`No projects row for id ${trimmedId}`);
   }
 
   const clientId =
-    typeof row.client_id === "string" && row.client_id.trim() !== ""
-      ? row.client_id.trim()
+    typeof row.zoom_client_id === "string" && row.zoom_client_id.trim() !== ""
+      ? row.zoom_client_id.trim()
       : null;
   const accountId =
-    typeof row.account_id === "string" && row.account_id.trim() !== ""
-      ? row.account_id.trim()
+    typeof row.zoom_account_id === "string" && row.zoom_account_id.trim() !== ""
+      ? row.zoom_account_id.trim()
       : null;
 
   if (clientId === null) {
     throw new Error(
-      `integration_accounts ${trimmedId} has no client_id; cannot obtain Zoom token`
+      `project ${trimmedId} has no zoom_client_id; configure Zoom credentials in project settings`
     );
   }
   if (accountId === null) {
     throw new Error(
-      `integration_accounts ${trimmedId} has no account_id; cannot obtain Zoom token`
+      `project ${trimmedId} has no zoom_account_id; configure Zoom credentials in project settings`
     );
   }
 
-  const enc = row.client_secret_encrypted;
+  const enc = row.zoom_client_secret_encrypted;
   if (enc === null || enc === undefined || String(enc).trim() === "") {
     throw new Error(
-      `integration_accounts ${trimmedId} has no client_secret_encrypted; configure Zoom credentials`
+      `project ${trimmedId} has no zoom_client_secret_encrypted; configure Zoom credentials in project settings`
     );
   }
 
@@ -240,7 +318,7 @@ async function getZoomAccessToken(supabase, integrationAccountId, key) {
     MIN_CACHE_TTL_MS,
     (expiresInSeconds - CACHE_SAFETY_MARGIN_SEC) * 1000
   );
-  accessTokenCache.set(trimmedId, {
+  accessTokenCache.set(cacheKey, {
     token: accessToken,
     expiresAt: Date.now() + ttlMs,
   });
@@ -248,23 +326,226 @@ async function getZoomAccessToken(supabase, integrationAccountId, key) {
 }
 
 /**
+ * Returns GHL-mirrored contact id, or creates an app-only row (never synced to GHL).
+ *
  * @param {import("@supabase/supabase-js").SupabaseClient} supabase
- * @param {string} webinarRunId
- * @param {string} normalizedEmail
- * @returns {Promise<boolean>}
+ * @param {{ projectId: string; locationId: string; normalizedEmail: string; participant: Record<string, unknown> }} args
+ * @returns {Promise<string | null>}
  */
-async function journeyEventExistsForEmail(supabase, webinarRunId, normalizedEmail) {
-  const { data, error } = await supabase
-    .from("journey_events")
+async function resolveOrCreateContactForZoomParticipant(supabase, args) {
+  const email = args.normalizedEmail;
+  if (email === "") {
+    return null;
+  }
+
+  const { data: ghlRow, error: ghlErr } = await supabase
+    .from("ghl_contacts")
     .select("id")
-    .eq("webinar_run_id", webinarRunId)
-    .filter("payload->>user_email", "eq", normalizedEmail)
+    .eq("email", email)
+    .eq("location_id", args.locationId)
+    .eq("is_app_only", false)
+    .order("id", { ascending: true })
+    .limit(1)
     .maybeSingle();
 
-  if (error !== null) {
-    throw new Error(`journey_events idempotency check failed: ${error.message}`);
+  if (ghlErr !== null) {
+    throw new Error(`ghl_contacts lookup failed: ${ghlErr.message}`);
   }
-  return data !== null;
+  if (ghlRow !== null && typeof ghlRow.id === "string" && ghlRow.id !== "") {
+    return ghlRow.id;
+  }
+
+  const { data: appRow, error: appErr } = await supabase
+    .from("ghl_contacts")
+    .select("id")
+    .eq("app_only_project_id", args.projectId)
+    .eq("is_app_only", true)
+    .eq("email", email)
+    .order("id", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (appErr !== null) {
+    throw new Error(`ghl_contacts app-only lookup failed: ${appErr.message}`);
+  }
+  if (appRow !== null && typeof appRow.id === "string" && appRow.id !== "") {
+    return appRow.id;
+  }
+
+  const newId = `${APP_ONLY_CONTACT_PREFIX}${randomUUID()}`;
+  const nameRaw = args.participant["name"];
+  const contactName =
+    typeof nameRaw === "string" && nameRaw.trim() !== ""
+      ? nameRaw.trim()
+      : email;
+
+  const { data: inserted, error: insErr } = await supabase
+    .from("ghl_contacts")
+    .insert({
+      id: newId,
+      location_id: args.locationId,
+      email,
+      contact_name: contactName,
+      is_app_only: true,
+      app_only_project_id: args.projectId,
+      source: "zoom_app_only",
+      raw_json: args.participant,
+      api_top_level_extras: {},
+    })
+    .select("id")
+    .maybeSingle();
+
+  if (insErr !== null) {
+    if (insErr.code === "23505") {
+      const { data: again, error: againErr } = await supabase
+        .from("ghl_contacts")
+        .select("id")
+        .eq("app_only_project_id", args.projectId)
+        .eq("is_app_only", true)
+        .eq("email", email)
+        .order("id", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (againErr !== null) {
+        throw new Error(`ghl_contacts app-only refetch failed: ${againErr.message}`);
+      }
+      if (again !== null && typeof again.id === "string") {
+        return again.id;
+      }
+    }
+    throw new Error(`ghl_contacts app-only insert failed: ${insErr.message}`);
+  }
+  if (inserted !== null && typeof inserted.id === "string") {
+    return inserted.id;
+  }
+  return newId;
+}
+
+/**
+ * Upserts one `zoom_attendance_segments` row (composite unique on webinar_run + idempotency_key).
+ *
+ * @param {import("@supabase/supabase-js").SupabaseClient} supabase
+ * @param {Record<string, unknown>} row
+ * @returns {Promise<void>}
+ */
+async function upsertZoomAttendanceSegment(supabase, row) {
+  const { error } = await supabase
+    .from("zoom_attendance_segments")
+    .upsert(row, { onConflict: "webinar_run_id,idempotency_key" });
+  if (error !== null) {
+    throw new Error(`zoom_attendance_segments upsert failed: ${error.message}`);
+  }
+}
+
+/**
+ * Inserts or updates the single `journey_events` rollup row (zoom + attended) per contact per run.
+ *
+ * @param {import("@supabase/supabase-js").SupabaseClient} supabase
+ * @param {{ webinarRunId: string; projectId: string; locationId: string; zoomMeetingId: string; contactId: string }} args
+ * @returns {Promise<"inserted" | "updated">}
+ */
+async function upsertZoomAttendedJourneyRollup(supabase, args) {
+  const { data: segs, error: segErr } = await supabase
+    .from("zoom_attendance_segments")
+    .select("join_at, duration_seconds, participant_email, raw_payload")
+    .eq("webinar_run_id", args.webinarRunId)
+    .eq("contact_id", args.contactId);
+
+  if (segErr !== null) {
+    throw new Error(`zoom_attendance_segments aggregate failed: ${segErr.message}`);
+  }
+  const list = segs ?? [];
+  if (list.length === 0) {
+    return "updated";
+  }
+
+  let totalSeconds = 0;
+  let minJoinMs = Number.POSITIVE_INFINITY;
+  let minJoinIso = "";
+  /** @type {Record<string, unknown> | null} */
+  let firstPayload = null;
+
+  for (const s of list) {
+    const dur =
+      typeof s.duration_seconds === "number" && Number.isFinite(s.duration_seconds)
+        ? s.duration_seconds
+        : 0;
+    totalSeconds += dur;
+    const ja = s.join_at;
+    if (typeof ja === "string") {
+      const ms = Date.parse(ja);
+      if (!Number.isNaN(ms) && ms < minJoinMs) {
+        minJoinMs = ms;
+        minJoinIso = ja;
+      }
+    }
+    if (firstPayload === null && isRecord(s.raw_payload)) {
+      firstPayload = s.raw_payload;
+    }
+  }
+
+  const occurredAt =
+    minJoinIso !== ""
+      ? minJoinIso
+      : typeof list[0]?.join_at === "string"
+        ? list[0].join_at
+        : new Date().toISOString();
+
+  const basePayload =
+    firstPayload !== null
+      ? { ...firstPayload, zoom_meeting_id: args.zoomMeetingId }
+      : { zoom_meeting_id: args.zoomMeetingId };
+  const payload = {
+    ...basePayload,
+    zoom_segment_count: list.length,
+    zoom_total_duration_seconds: totalSeconds,
+  };
+
+  const { data: existing, error: exErr } = await supabase
+    .from("journey_events")
+    .select("id")
+    .eq("webinar_run_id", args.webinarRunId)
+    .eq("contact_id", args.contactId)
+    .eq("source_system", "zoom")
+    .eq("event_type", "attended")
+    .order("id", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (exErr !== null) {
+    throw new Error(`journey_events rollup lookup failed: ${exErr.message}`);
+  }
+
+  if (existing !== null && typeof existing.id === "string") {
+    const { error: upErr } = await supabase
+      .from("journey_events")
+      .update({
+        occurred_at: occurredAt,
+        duration_seconds: totalSeconds,
+        payload,
+      })
+      .eq("id", existing.id);
+    if (upErr !== null) {
+      throw new Error(`journey_events rollup update failed: ${upErr.message}`);
+    }
+    return "updated";
+  }
+
+  const { error: insErr } = await supabase.from("journey_events").insert({
+    occurred_at: occurredAt,
+    event_type: "attended",
+    source_system: "zoom",
+    contact_id: args.contactId,
+    location_id: args.locationId,
+    project_id: args.projectId,
+    webinar_run_id: args.webinarRunId,
+    duration_seconds: totalSeconds,
+    payload,
+  });
+  if (insErr !== null) {
+    throw new Error(`journey_events rollup insert failed: ${insErr.message}`);
+  }
+  return "inserted";
 }
 
 /**
@@ -341,7 +622,7 @@ async function fetchZoomParticipantPages(
  * @param {import("@supabase/supabase-js").SupabaseClient} supabase
  * @param {string} webinarRunId
  * @param {Buffer} key
- * @returns {Promise<{ inserted: number; skipped: number }>}
+ * @returns {Promise<{ inserted: number; skipped: number; segmentsUpserted: number; rollupsUpdated: number }>}
  */
 async function syncZoomParticipantsForRun(supabase, webinarRunId, key) {
   const trimmedRunId = webinarRunId.trim();
@@ -372,13 +653,13 @@ async function syncZoomParticipantsForRun(supabase, webinarRunId, key) {
     console.log(
       `syncZoomParticipantsForRun: webinar_run ${trimmedRunId} has no zoom_meeting_id; skipping`
     );
-    return { inserted: 0, skipped: 0 };
+    return { inserted: 0, skipped: 0, segmentsUpserted: 0, rollupsUpdated: 0 };
   }
 
   const projectIdRaw = run.project_id;
   if (projectIdRaw === null || projectIdRaw === "") {
     throw new Error(
-      `webinar_run ${trimmedRunId} has no project_id; cannot resolve Zoom integration account`
+      `webinar_run ${trimmedRunId} has no project_id; cannot resolve Zoom credentials`
     );
   }
 
@@ -389,27 +670,7 @@ async function syncZoomParticipantsForRun(supabase, webinarRunId, key) {
     );
   }
 
-  const { data: project, error: projectError } = await supabase
-    .from("projects")
-    .select("id, zoom_integration_account_id")
-    .eq("id", projectIdRaw)
-    .maybeSingle();
-
-  if (projectError !== null) {
-    throw new Error(`projects lookup failed: ${projectError.message}`);
-  }
-  if (project === null) {
-    throw new Error(`No projects row for id ${projectIdRaw}`);
-  }
-
-  const zoomAccountId = project.zoom_integration_account_id;
-  if (zoomAccountId === null || zoomAccountId === "") {
-    throw new Error(
-      `project ${projectIdRaw} has no zoom_integration_account_id; link a Zoom integration account`
-    );
-  }
-
-  const accessToken = await getZoomAccessToken(supabase, zoomAccountId, key);
+  const accessToken = await getZoomAccessToken(supabase, projectIdRaw, key);
 
   const pages = await fetchZoomParticipantPages(
     accessToken,
@@ -419,39 +680,25 @@ async function syncZoomParticipantsForRun(supabase, webinarRunId, key) {
 
   let inserted = 0;
   let skipped = 0;
-  /** @type {Record<string, unknown>[]} */
-  const pending = [];
+  let segmentsUpserted = 0;
+  let rollupsUpdated = 0;
 
   const locationId = run.location_id;
-
-  const flushPending = async () => {
-    if (pending.length === 0) {
-      return;
-    }
-    const { error } = await supabase.from("journey_events").insert(pending);
-    if (error !== null) {
-      throw new Error(`journey_events batch insert failed: ${error.message}`);
-    }
-    inserted += pending.length;
-    pending.length = 0;
-  };
+  const syncedAt = new Date().toISOString();
+  /** @type {Set<string>} */
+  const contactsToRollup = new Set();
 
   for (const participant of pages) {
     const emailRaw = participant["user_email"];
-    const email =
+    const emailNorm =
       typeof emailRaw === "string" ? emailRaw.toLowerCase().trim() : "";
 
-    if (email === "") {
-      skipped += 1;
-      continue;
-    }
-
-    const exists = await journeyEventExistsForEmail(
-      supabase,
+    const idemKey = buildSegmentIdempotencyKey(
       trimmedRunId,
-      email
+      participant,
+      emailNorm
     );
-    if (exists) {
+    if (idemKey === null) {
       skipped += 1;
       continue;
     }
@@ -464,44 +711,64 @@ async function syncZoomParticipantsForRun(supabase, webinarRunId, key) {
       skipped += 1;
       continue;
     }
-    const occurredAt = joinTimeRaw.trim();
-
-    const { data: contactRow, error: contactError } = await supabase
-      .from("ghl_contacts")
-      .select("id")
-      .eq("email", email)
-      .eq("location_id", locationId)
-      .maybeSingle();
-
-    if (contactError !== null) {
-      throw new Error(`ghl_contacts lookup failed: ${contactError.message}`);
+    const joinAtIso = parseIsoTimestamptzOrNull(joinTimeRaw.trim());
+    if (joinAtIso === null) {
+      skipped += 1;
+      continue;
     }
 
-    const contactId =
-      contactRow !== null && typeof contactRow.id === "string"
-        ? contactRow.id
-        : null;
+    const leaveAtIso = parseIsoTimestamptzOrNull(participant["leave_time"]);
+    const durSec = durationToSeconds(participant["duration"]);
 
-    pending.push({
-      occurred_at: occurredAt,
-      event_type: "attended",
-      source_system: "zoom",
-      contact_id: contactId,
-      location_id: locationId,
-      project_id: projectIdRaw,
+    /** @type {string | null} */
+    let contactId = null;
+    if (emailNorm !== "") {
+      contactId = await resolveOrCreateContactForZoomParticipant(supabase, {
+        projectId: projectIdRaw,
+        locationId,
+        normalizedEmail: emailNorm,
+        participant,
+      });
+      if (contactId !== null) {
+        contactsToRollup.add(contactId);
+      }
+    }
+
+    const segRow = {
       webinar_run_id: trimmedRunId,
-      duration_seconds: durationToSeconds(participant["duration"]),
-      payload: { ...participant, zoom_meeting_id: zoomMeetingId },
-    });
+      project_id: projectIdRaw,
+      location_id: locationId,
+      zoom_meeting_id: zoomMeetingId,
+      idempotency_key: idemKey,
+      participant_email: emailNorm === "" ? null : emailNorm,
+      join_at: joinAtIso,
+      leave_at: leaveAtIso,
+      duration_seconds: durSec,
+      contact_id: contactId,
+      raw_payload: buildPayload(participant, zoomMeetingId),
+      synced_at: syncedAt,
+    };
 
-    if (pending.length >= INSERT_CHUNK) {
-      await flushPending();
+    await upsertZoomAttendanceSegment(supabase, segRow);
+    segmentsUpserted += 1;
+  }
+
+  for (const cid of contactsToRollup) {
+    const outcome = await upsertZoomAttendedJourneyRollup(supabase, {
+      webinarRunId: trimmedRunId,
+      projectId: projectIdRaw,
+      locationId,
+      zoomMeetingId,
+      contactId: cid,
+    });
+    if (outcome === "inserted") {
+      inserted += 1;
+    } else {
+      rollupsUpdated += 1;
     }
   }
 
-  await flushPending();
-
-  return { inserted, skipped };
+  return { inserted, skipped, segmentsUpserted, rollupsUpdated };
 }
 
 async function main() {
@@ -524,12 +791,11 @@ async function main() {
   const key = parseGhlConnectionTokenEncryptionKey(encRaw);
   const supabase = createClient(url, srk);
 
-  const { inserted, skipped } = await syncZoomParticipantsForRun(
-    supabase,
-    args.webinarRunId,
-    key
+  const { inserted, skipped, segmentsUpserted, rollupsUpdated } =
+    await syncZoomParticipantsForRun(supabase, args.webinarRunId, key);
+  console.log(
+    `Zoom sync complete: inserted=${String(inserted)} skipped=${String(skipped)} segmentsUpserted=${String(segmentsUpserted)} rollupsUpdated=${String(rollupsUpdated)}`
   );
-  console.log(`Zoom sync complete: inserted=${inserted} skipped=${skipped}`);
 }
 
 main().catch((e) => {

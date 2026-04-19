@@ -26,6 +26,16 @@ Table name: **`journey_events`**
 
 Idempotency key for Zoom upserts: `(zoom_meeting_id from payload, participant email)`.
 
+## Planned evolution (2026-04-15)
+
+**Not implemented yet** — design captured in [[Zoom-Attendance-Segments-And-Journey-Design]] (raw) and synthesized in [[Zoom-Attendance-Segments-And-Journey]].
+
+- Add a dedicated **`zoom_attendance_segments`** table for join/leave facts and concurrency-style charts.
+- Keep **`journey_events`** as the **rollup** “attended this run” row for Show Up and collapsed journey UI.
+- **App-only contacts** when Zoom email does not match GHL (no outbound GHL create).
+
+When migrations land under `docs/database/migrations/`, update this page with concrete column names and FKs.
+
 ## Ingest paths
 
 - **GHL:** webhooks (and API where needed) append lifecycle events.
@@ -49,4 +59,5 @@ Idempotency key for Zoom upserts: `(zoom_meeting_id from payload, participant em
 - [[Product-Phase-Roadmap]]
 - [[GHL-Webhook-Pipeline]]
 - [[Zoom]] · [[GoHighLevel]]
+- [[Zoom-Attendance-Segments-And-Journey]] (planned segment store + rollup)
 - `../docs/database/migrations/011_*.sql` (planned)

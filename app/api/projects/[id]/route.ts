@@ -5,6 +5,11 @@ import type { Json } from "@/database.types";
 import { nextResponseFromGuard } from "@/lib/guard-response";
 import { parseJsonObjectBody } from "@/lib/parse-json-body";
 import { requireAuthAndWorkspace } from "@/middleware/workspace";
+import {
+  encryptGhlConnectionToken,
+  loadGhlConnectionTokenEncryptionKeyFromEnv,
+} from "@/services/ghl-connection-token-crypto";
+import { exchangeZoomAccountCredentials } from "@/services/zoom-token";
 
 export const runtime = "nodejs";
 
@@ -71,14 +76,18 @@ export async function PATCH(
   }
 
   const { id } = await context.params;
-  const body = parsed.body;
-  const name = body.name;
-  const description = body.description;
-  const ghlLocationIdBody = body.ghl_location_id;
-  const zoomIntegrationAccountBody = body.zoom_integration_account_id;
-  const occupationFieldBody = body.traffic_occupation_field_id;
-  const occupationFieldKeyBody = body.traffic_occupation_field_key;
-  const agencyTagsBody = body.traffic_agency_line_tags;
+    const body = parsed.body;
+    const name = body.name;
+    const description = body.description;
+    const ghlLocationIdBody = body.ghl_location_id;
+    const zoomClientIdBody = body.zoom_client_id;
+    const zoomAccountIdBody = body.zoom_account_id;
+    const zoomClientSecretBody = body.zoom_client_secret;
+    const zoomUserIdBody = body.zoom_user_id;
+    const occupationFieldBody = body.traffic_occupation_field_id;
+    const occupationFieldKeyBody = body.traffic_occupation_field_key;
+    const agencyTagsBody = body.traffic_agency_line_tags;
+    const breakdownFieldsBody = body.traffic_breakdown_fields;
 
   try {
     const { data: existingProject, error: fetchError } = await supabase
@@ -116,17 +125,106 @@ export async function PATCH(
       }
     }
 
-    if (zoomIntegrationAccountBody !== undefined) {
-      if (zoomIntegrationAccountBody === null || zoomIntegrationAccountBody === "") {
-        updateData.zoom_integration_account_id = null;
-      } else if (typeof zoomIntegrationAccountBody === "string") {
-        updateData.zoom_integration_account_id = zoomIntegrationAccountBody.trim();
+    if (zoomClientIdBody !== undefined) {
+      if (zoomClientIdBody === null || zoomClientIdBody === "") {
+        updateData.zoom_client_id = null;
+      } else if (typeof zoomClientIdBody === "string") {
+        updateData.zoom_client_id = zoomClientIdBody.trim();
       } else {
+        return NextResponse.json(
+          { success: false, error: "zoom_client_id must be a string or null" },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (zoomAccountIdBody !== undefined) {
+      if (zoomAccountIdBody === null || zoomAccountIdBody === "") {
+        updateData.zoom_account_id = null;
+      } else if (typeof zoomAccountIdBody === "string") {
+        updateData.zoom_account_id = zoomAccountIdBody.trim();
+      } else {
+        return NextResponse.json(
+          { success: false, error: "zoom_account_id must be a string or null" },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (zoomClientSecretBody !== undefined && zoomClientSecretBody !== null && zoomClientSecretBody !== "") {
+      if (typeof zoomClientSecretBody !== "string") {
+        return NextResponse.json(
+          { success: false, error: "zoom_client_secret must be a string" },
+          { status: 400 }
+        );
+      }
+
+      const clientIdForValidation =
+        typeof zoomClientIdBody === "string" && zoomClientIdBody.trim() !== ""
+          ? zoomClientIdBody.trim()
+          : (updateData.zoom_client_id as string | null | undefined) ?? null;
+      const accountIdForValidation =
+        typeof zoomAccountIdBody === "string" && zoomAccountIdBody.trim() !== ""
+          ? zoomAccountIdBody.trim()
+          : (updateData.zoom_account_id as string | null | undefined) ?? null;
+
+      if (
+        typeof clientIdForValidation !== "string" ||
+        clientIdForValidation === "" ||
+        typeof accountIdForValidation !== "string" ||
+        accountIdForValidation === ""
+      ) {
         return NextResponse.json(
           {
             success: false,
-            error: "zoom_integration_account_id must be a string or null",
+            error:
+              "zoom_client_id and zoom_account_id are required when saving a Zoom client secret",
           },
+          { status: 400 }
+        );
+      }
+
+      try {
+        await exchangeZoomAccountCredentials({
+          clientId: clientIdForValidation,
+          clientSecretPlaintext: zoomClientSecretBody,
+          accountId: accountIdForValidation,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "token exchange failed";
+        return NextResponse.json(
+          { success: false, error: `Zoom credentials rejected: ${msg}` },
+          { status: 400 }
+        );
+      }
+
+      let encKey;
+      try {
+        encKey = loadGhlConnectionTokenEncryptionKeyFromEnv();
+      } catch {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Server encryption is not configured (missing GHL_CONNECTION_TOKEN_ENCRYPTION_KEY)",
+          },
+          { status: 503 }
+        );
+      }
+      updateData.zoom_client_secret_encrypted = encryptGhlConnectionToken(
+        zoomClientSecretBody,
+        encKey
+      );
+    }
+
+    if (zoomUserIdBody !== undefined) {
+      if (zoomUserIdBody === null || zoomUserIdBody === "") {
+        updateData.zoom_user_id = null;
+      } else if (typeof zoomUserIdBody === "string") {
+        updateData.zoom_user_id = zoomUserIdBody.trim().toLowerCase();
+      } else {
+        return NextResponse.json(
+          { success: false, error: "zoom_user_id must be a string or null" },
           { status: 400 }
         );
       }
@@ -181,6 +279,23 @@ export async function PATCH(
         }
         const asJson: Json = tagsParsed;
         updateData.traffic_agency_line_tags = asJson;
+      }
+    }
+
+    if (breakdownFieldsBody !== undefined) {
+      if (breakdownFieldsBody === null) {
+        updateData.traffic_breakdown_fields = null;
+      } else if (Array.isArray(breakdownFieldsBody)) {
+        updateData.traffic_breakdown_fields = breakdownFieldsBody;
+      } else {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "traffic_breakdown_fields must be null or an array like [{\"field_key\":\"contact.occupation\",\"label\":\"Lead Occupation\"}]",
+          },
+          { status: 400 }
+        );
       }
     }
 

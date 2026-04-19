@@ -61,7 +61,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const { data: connections, error: connectionsError } = await supabase
     .from("ghl_connections")
-    .select("id")
+    .select("id, ghl_location_id")
     .in("project_id", projectIds)
     .eq("is_active", true);
 
@@ -80,6 +80,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     try {
       await runGhlFullContactSyncForConnectionId(row.id);
       await runGhlFullOrdersInvoicesSyncForConnectionId(row.id);
+
+      /* After syncing contacts, backfill webinar_run_id for all contacts
+       * in this location. This assigns each contact to their next upcoming
+       * webinar run based on their opt-in date. */
+      const { error: backfillError } = await supabase.rpc(
+        "backfill_webinar_runs_for_location",
+        { p_location_id: row.ghl_location_id }
+      );
+      if (backfillError !== null) {
+        console.warn(
+          `backfill_webinar_runs_for_location failed for location ${row.ghl_location_id}:`,
+          backfillError.message
+        );
+      }
+
       triggered += 1;
     } catch (e) {
       const msg = e instanceof Error ? e.message : "GHL full sync failed";

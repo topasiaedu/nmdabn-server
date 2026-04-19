@@ -560,16 +560,19 @@ async function replaceContactChildrenBatch(supabase, items, now) {
   for (const it of items) {
     const { contactId, locationId, inner } = it;
 
+    const tagNamesSeen = new Set();
     const tags = Array.isArray(inner.tags) ? inner.tags : [];
     for (const t of tags) {
-      if (typeof t === "string" && t.length > 0) {
-        tagRows.push({
-          contact_id: contactId,
-          location_id: locationId,
-          tag_name: t,
-          synced_at: now,
-        });
-      }
+      if (typeof t !== "string") continue;
+      const tagName = t.trim();
+      if (tagName === "" || tagNamesSeen.has(tagName)) continue;
+      tagNamesSeen.add(tagName);
+      tagRows.push({
+        contact_id: contactId,
+        location_id: locationId,
+        tag_name: tagName,
+        synced_at: now,
+      });
     }
 
     const cfs = Array.isArray(inner.customFields) ? inner.customFields : [];

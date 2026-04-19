@@ -5,18 +5,19 @@ import {
   loadGhlConnectionTokenEncryptionKeyFromEnv,
 } from "./ghl-connection-token-crypto";
 
+/**
+ * In-memory bearer cache keyed by project id.
+ * Cleared on process restart only (Phase 1 — no Redis).
+ */
+
 /** Seconds to subtract from Zoom `expires_in` so we refresh before actual expiry. */
 const CACHE_SAFETY_MARGIN_SEC = 300;
 
 /** Minimum time-to-live for a cached token (ms); avoids caching unusable near-zero TTL. */
 const MIN_CACHE_TTL_MS = 60_000;
 
-const ZOOM_TOKEN_URL = "https://accounts.zoom.us/oauth/token";
+const ZOOM_TOKEN_URL = "https://zoom.us/oauth/token";
 
-/**
- * In-memory bearer cache keyed by `integration_accounts.id`.
- * Cleared on process restart only (Phase 1 — no Redis).
- */
 const accessTokenCache = new Map<
   string,
   { token: string; expiresAt: number }
@@ -143,60 +144,63 @@ export async function exchangeZoomAccountCredentials(
 }
 
 /**
- * Returns a cached or freshly exchanged Zoom S2S bearer token for the integration account.
+ * Returns a cached or freshly exchanged Zoom S2S bearer token for a project.
+ * Credentials are stored directly on the `projects` row (zoom_client_id,
+ * zoom_account_id, zoom_client_secret_encrypted).
  */
 export async function getZoomAccessToken(
-  integrationAccountId: string,
+  projectId: string,
   supabaseClient: SupabaseClient<Database>
 ): Promise<string> {
-  const trimmedId = integrationAccountId.trim();
+  const trimmedId = projectId.trim();
   if (trimmedId === "") {
-    throw new Error("integration_account_id is required");
+    throw new Error("project_id is required");
   }
 
+  const cacheKey = `project:${trimmedId}`;
   const now = Date.now();
-  const cached = accessTokenCache.get(trimmedId);
+  const cached = accessTokenCache.get(cacheKey);
   if (cached !== undefined && now < cached.expiresAt) {
     return cached.token;
   }
 
   const { data: row, error } = await supabaseClient
-    .from("integration_accounts")
-    .select("id, client_id, account_id, client_secret_encrypted")
+    .from("projects")
+    .select("id, zoom_client_id, zoom_account_id, zoom_client_secret_encrypted")
     .eq("id", trimmedId)
     .maybeSingle();
 
   if (error !== null) {
-    throw new Error(`integration_accounts lookup failed: ${error.message}`);
+    throw new Error(`projects lookup failed: ${error.message}`);
   }
   if (row === null) {
-    throw new Error(`No integration_accounts row for id ${trimmedId}`);
+    throw new Error(`No projects row for id ${trimmedId}`);
   }
 
   const clientId =
-    typeof row.client_id === "string" && row.client_id.trim() !== ""
-      ? row.client_id.trim()
+    typeof row.zoom_client_id === "string" && row.zoom_client_id.trim() !== ""
+      ? row.zoom_client_id.trim()
       : null;
   const accountId =
-    typeof row.account_id === "string" && row.account_id.trim() !== ""
-      ? row.account_id.trim()
+    typeof row.zoom_account_id === "string" && row.zoom_account_id.trim() !== ""
+      ? row.zoom_account_id.trim()
       : null;
 
   if (clientId === null) {
     throw new Error(
-      `integration_accounts ${trimmedId} has no client_id; cannot obtain Zoom token`
+      `project ${trimmedId} has no zoom_client_id; configure Zoom credentials in project settings`
     );
   }
   if (accountId === null) {
     throw new Error(
-      `integration_accounts ${trimmedId} has no account_id; cannot obtain Zoom token`
+      `project ${trimmedId} has no zoom_account_id; configure Zoom credentials in project settings`
     );
   }
 
-  const enc = row.client_secret_encrypted;
+  const enc = row.zoom_client_secret_encrypted;
   if (enc === null || enc === undefined || String(enc).trim() === "") {
     throw new Error(
-      `integration_accounts ${trimmedId} has no client_secret_encrypted; configure Zoom credentials`
+      `project ${trimmedId} has no zoom_client_secret_encrypted; configure Zoom credentials in project settings`
     );
   }
 
@@ -228,7 +232,7 @@ export async function getZoomAccessToken(
     (expiresInSeconds - CACHE_SAFETY_MARGIN_SEC) * 1000
   );
 
-  accessTokenCache.set(trimmedId, {
+  accessTokenCache.set(cacheKey, {
     token: accessToken,
     expiresAt: Date.now() + ttlMs,
   });

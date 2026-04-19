@@ -149,6 +149,19 @@ Append-only timeline. **New entries go at the bottom.** Heading format: `## [YYY
 - All column references validated against live DB (no missing columns).
 - Updated: [[Phase-1-Build-Order]] (Step 6 marked ✅ DONE).
 
+## [2026-04-14] refactor | NM Media Dashboard UI/UX Redesign (P0-P2)
+
+- Implemented P0 requirements: new `NavTabs`, robust settings authentication via `SettingsShell`, `DashboardContext` data flow.
+- Overhauled `DashboardShell` with specific 5-level empty state banners, top filter bar instead of side-bars, and last synced timestamp display per R12.
+- Refactored `app/settings/*` to a two-panel 2-column view with sidebar (R6) bridging all multi-brand features under Workspace/Project boundaries.
+- Replaced separate Zoom / Webinar runs settings pages with unified `/settings/integrations`.
+- Upgraded dashboard visual design (R5): unified card aesthetics, metrics rendering, standard layouts.
+- Added KPI parameter strips (R9) to Traffic, ShowUp, Agency, Buyer Behavior.
+- Added Line Pill Filters toggle on Traffic Dashboard (R10).
+- Fixed unconfigured GHL amber banner in Traffic dashboard (R8).
+- Set Document page titles for routing analytics (R11).
+- Passed full TypeScript compile with 0 errors via `npx tsc --noEmit`.
+
 ## [2026-04-13] review | Step 5 post-review + smoke test
 
 - `app/api/projects/[id]/route.ts` — PATCH extended with `zoom_integration_account_id` (null/""/string pattern).
@@ -173,6 +186,17 @@ Append-only timeline. **New entries go at the bottom.** Heading format: `## [YYY
 - TypeScript: 0 errors. Both new routes → 401 without auth.
 - Updated: [[Phase-1-Build-Order]] (Step 4 marked ✅ DONE; Step 9 updated to note `sync/zoom` route pre-exists).
 
+## [2026-04-14] ingest | UI/UX audit and redesign spec
+
+- Raw: `raw/sources/2026-04-14-ui-ux-audit-and-redesign-spec.md` — full browser audit of live app (all pages), live code review of `DashboardShell.tsx`, `NavTabs.tsx`, all `/app/settings/*` pages.
+- **Key context clarification recorded:** This app serves NM Media (a company managing multiple client brands: CAE, Dr Jasmine, CMC, etc.), not just CAE. All design decisions reflect multi-brand operator workflow.
+- Critical issues (C1–C4): Settings unreachable from nav; settings pages fail silently with expired token; empty states give no guidance; project settings form rendered inside Traffic dashboard.
+- Major issues (M1–M5): Zero visual design identity; Sign Out misplaced; Settings IA wrong for multi-brand; no sync trigger in UI; selector bar looks like a settings form.
+- 12 redesign specs (R1–R12) with exact Tailwind classes, component names, and file-level change instructions.
+- Source page added: [[UI-UX-Audit-And-Redesign-Spec]].
+- Concept pages added: [[UI-Design-System]], [[App-Navigation-Structure]], [[Settings-IA-Redesign]], [[Dashboard-UX-Patterns]].
+- Updated: [[index]] (raw source row, source note row, 4 new concept rows).
+
 ## [2026-04-13] review | Step 10 — Deployment
 
 - `Dockerfile` — multi-stage node:22-alpine build; copies `.next/standalone`, `.next/static`, `public/`, `scripts/`; `output: "standalone"` confirmed already set in `next.config.ts`.
@@ -190,3 +214,26 @@ Append-only timeline. **New entries go at the bottom.** Heading format: `## [YYY
 - Concept page updated: [[Buyer-Journey-Event-Store]] — added decided migration 011 schema table; updated Zoom ingest path (manual export superseded by S2S API); added "Showed" definition and open decision link.
 - Contradictions resolved: [[Buyer-Journey-Event-Store]] previously noted "manual export acceptable in Phase 1" — superseded by S2S API decision made 2026-04-13.
 - Updated: [[index]] (raw catalog row, source row, four new concept rows, updated Buyer-Journey-Event-Store summary).
+
+## [2026-04-13] ingest | Dashboard architecture redesign — all-runs column table
+
+- Raw: `raw/sources/2026-04-13-dashboard-architecture-redesign-all-runs.md`
+- Covers two sessions: (1) full 15-task dashboard redesign implementing migrations 019–021, ProjectContext, ColumnTable, pivot utilities, API rewrites, dashboard page rewrites, and project settings update. (2) Debug session finding and fixing the bulk-sync backfill omission (5,061 contacts with `webinar_run_id = null`).
+- Source page added: [[Dashboard-Architecture-Redesign-All-Runs]]
+- Concept pages added: [[All-Runs-Column-Table]], [[Project-Context-Global-State]], [[Traffic-Breakdown-Fields]], [[Webinar-Run-Contact-Assignment]]
+- Concept pages updated: [[Dashboard-UX-Patterns]] (Conflict/superseded note — filter bar removed), [[Supabase-GHL-Mirror]] (migrations 019–021 rows added)
+- Updated: [[index]] (raw source row, source note row, 4 new concept rows, 2 updated concept summaries)
+
+## [2026-04-13] synthesis | Backfill bug root cause recorded
+
+- Filed: [[Webinar-Run-Contact-Assignment]]
+- Finding: bulk GHL sync (`runGhlFullContactSyncForConnectionId`) never called `backfill_webinar_runs_for_location`, leaving all bulk-imported contacts with `webinar_run_id = null` and invisible to dashboard RPCs.
+- Fix applied: `app/api/actions/sync/ghl/route.ts` now calls the backfill RPC per connection after contact sync completes. Manual backfill ran for CAE location (5,061 contacts updated).
+- Traffic RPC confirmed: 174 rows returned post-backfill.
+
+## [2026-04-15] ingest | Zoom attendance segments + journey rollup design
+
+- Raw: `raw/sources/2026-04-15-zoom-attendance-segments-journey-design.md` — frozen design: dedicated `zoom_attendance_segments` table, `journey_events` as attended rollup, Show Up binary rule, app-only contacts for mismatched Zoom email, audience curve from segments, cloud recording as optional manual scrub (no graph-to-seek v1).
+- Source page: [[Zoom-Attendance-Segments-And-Journey-Design]]
+- Concept added: [[Zoom-Attendance-Segments-And-Journey]]
+- Updated: [[Buyer-Journey-Event-Store]] (planned evolution section), [[Zoom-Integration-Architecture]] (related link), [[Zoom]] entity (related link), [[index]].

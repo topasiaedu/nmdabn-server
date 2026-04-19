@@ -1,59 +1,87 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { env } from "@/config/env";
-import { getTagsForLine, listConfiguredLineKeys } from "@/config/traffic";
+import { supabase } from "@/config/supabase";
 import { nextResponseFromGuard } from "@/lib/guard-response";
-import { resolveTrafficDashboardAuth } from "@/middleware/traffic-dashboard-flex-auth";
-import { buildTrafficDashboardPayload } from "@/services/traffic-dashboard";
+import { requireAuthAndWorkspace } from "@/middleware/workspace";
+import {
+  buildRunColumns,
+  pivotCountRows,
+  type AllRunsPayload,
+} from "@/lib/all-runs-pivot";
 import { fetchProjectTrafficSettings } from "@/services/traffic-project-settings";
+import { env } from "@/config/env";
+import { getTagsForLine } from "@/config/traffic";
+
+export const runtime = "nodejs";
+
+/** Canonical order for UTM axes passed to `get_traffic_all_runs`. */
+const UTM_AXIS_ORDER = [
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_content",
+] as const;
+
+type UtmAxis = (typeof UTM_AXIS_ORDER)[number];
+
+function isUtmAxis(value: string): value is UtmAxis {
+  return (UTM_AXIS_ORDER as readonly string[]).includes(value);
+}
 
 /**
- * GET /api/dashboard/traffic — Traffic dashboard payload (Bearer + workspace or legacy key + location).
+ * Parse `dimensions=utm_source,utm_campaign` into ordered unique axes.
+ * Invalid tokens are dropped. Empty result defaults to utm_content only.
+ */
+function parseUtmDimensionsParam(raw: string | null): UtmAxis[] {
+  if (raw === null || raw.trim() === "") {
+    return ["utm_content"];
+  }
+  const requested = new Set<UtmAxis>();
+  for (const part of raw.split(",")) {
+    const t = part.trim().toLowerCase();
+    if (isUtmAxis(t)) {
+      requested.add(t);
+    }
+  }
+  const ordered = UTM_AXIS_ORDER.filter((a) => requested.has(a));
+  return ordered.length > 0 ? ordered : ["utm_content"];
+}
+
+/**
+ * GET /api/dashboard/traffic
+ * All-runs traffic: last-touch UTM combination rows (distinct contacts per run).
+ *
+ * Query params:
+ *   workspace_id  – required (or X-Workspace-Id header)
+ *   project_id    – required
+ *   line          – optional agency line key (e.g. "NM", "OM"). Omit or "All" for all contacts.
+ *   dimensions    – optional comma list: utm_source, utm_medium, utm_campaign, utm_content.
+ *                   Row labels join selected values with " | ". Default: utm_content only.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const flex = await resolveTrafficDashboardAuth(request);
-  if (!flex.ok) {
-    return nextResponseFromGuard(flex);
+  const session = await requireAuthAndWorkspace(request);
+  if (!session.ok) {
+    return nextResponseFromGuard(session);
   }
 
   try {
-    const lineKey =
-      request.nextUrl.searchParams.get("line")?.trim() ?? "";
-
-    if (lineKey === "") {
+    const sp = request.nextUrl.searchParams;
+    const projectId = sp.get("project_id")?.trim() ?? "";
+    if (projectId === "") {
       return NextResponse.json(
-        { success: false, error: "line query parameter is required" },
+        { success: false, error: "project_id query parameter is required" },
         { status: 400 }
       );
     }
 
-    const dateFromRaw = request.nextUrl.searchParams.get("date_from");
-    const dateToRaw = request.nextUrl.searchParams.get("date_to");
-    const dateFrom =
-      dateFromRaw !== null && dateFromRaw.trim() !== ""
-        ? dateFromRaw.trim()
-        : null;
-    const dateTo =
-      dateToRaw !== null && dateToRaw.trim() !== "" ? dateToRaw.trim() : null;
+    const lineKey = sp.get("line")?.trim() ?? "All";
+    const utmAxes = parseUtmDimensionsParam(sp.get("dimensions"));
 
-    if (flex.mode === "user") {
-      const workspaceId = flex.workspaceId;
-
-      const projectId =
-        request.nextUrl.searchParams.get("project_id")?.trim() ?? "";
-      if (projectId === "") {
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "project_id query parameter is required when using Bearer authentication",
-          },
-          { status: 400 }
-        );
-      }
-
+    /* Resolve line tags for filtering (null = all contacts). */
+    let lineTags: string[] | null = null;
+    if (lineKey !== "" && lineKey !== "All") {
       const resolved = await fetchProjectTrafficSettings(
         projectId,
-        workspaceId,
+        session.workspaceId,
         env.trafficAgencyLineTags
       );
       if ("error" in resolved) {
@@ -62,106 +90,55 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           { status: 400 }
         );
       }
-
-      const occOverride =
-        request.nextUrl.searchParams.get("occupation_field_id")?.trim() ?? "";
-      const occupationFieldId =
-        occOverride !== "" ? occOverride : resolved.occupationFieldId;
-
-      const lineTags = getTagsForLine(lineKey, resolved.agencyLineTags);
-      if (lineTags === undefined) {
+      const tags = getTagsForLine(lineKey, resolved.agencyLineTags);
+      if (tags === undefined || tags.length === 0) {
         return NextResponse.json(
           {
             success: false,
-            error: `Unknown line "${lineKey}". Configured lines: ${listConfiguredLineKeys(resolved.agencyLineTags).join(", ")}`,
+            error: `Unknown line "${lineKey}". Configured lines: ${Object.keys(
+              resolved.agencyLineTags ?? {}
+            ).join(", ")}`,
           },
           { status: 400 }
         );
       }
-
-      const payload = await buildTrafficDashboardPayload({
-        locationId: resolved.ghlLocationId,
-        lineKey,
-        lineTags,
-        occupationFieldId,
-        dateFrom,
-        dateTo,
-        projectId: resolved.projectId,
-        projectName: resolved.projectName,
-      });
-
-      return NextResponse.json({
-        success: true,
-        data: payload,
-        configuredLines: listConfiguredLineKeys(resolved.agencyLineTags),
-        trafficSource: "project",
-      });
+      lineTags = tags;
     }
 
-    const locationId =
-      request.nextUrl.searchParams.get("location_id")?.trim() ?? "";
-    if (locationId === "") {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "location_id query parameter is required for legacy (non-Bearer) access",
-        },
-        { status: 400 }
-      );
-    }
-
-    const lineTagsLegacy = getTagsForLine(lineKey, env.trafficAgencyLineTags);
-    if (lineTagsLegacy === undefined) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Unknown line "${lineKey}". Configured lines: ${listConfiguredLineKeys(env.trafficAgencyLineTags).join(", ")}`,
-        },
-        { status: 400 }
-      );
-    }
-
-    const occFromQuery =
-      request.nextUrl.searchParams.get("occupation_field_id")?.trim() ?? "";
-    const occupationFieldIdLegacy =
-      occFromQuery !== ""
-        ? occFromQuery
-        : env.trafficOccupationFieldId !== undefined
-          ? env.trafficOccupationFieldId
-          : "";
-
-    if (occupationFieldIdLegacy === "") {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "occupation_field_id query parameter or TRAFFIC_OCCUPATION_FIELD_ID env is required for legacy access",
-        },
-        { status: 400 }
-      );
-    }
-
-    const payload = await buildTrafficDashboardPayload({
-      locationId,
-      lineKey,
-      lineTags: lineTagsLegacy,
-      occupationFieldId: occupationFieldIdLegacy,
-      dateFrom,
-      dateTo,
+    const { data, error } = await supabase.rpc("get_traffic_all_runs", {
+      p_project_id: projectId,
+      p_workspace_id: session.workspaceId,
+      p_line_tags: lineTags,
+      p_utm_axes: utmAxes,
     });
 
-    return NextResponse.json({
-      success: true,
-      data: payload,
-      configuredLines: listConfiguredLineKeys(env.trafficAgencyLineTags),
-      trafficSource: "legacy",
-    });
+    if (error !== null) {
+      console.error("GET /api/dashboard/traffic RPC error:", error);
+      return NextResponse.json(
+        { success: false, error: "Failed to load traffic data" },
+        { status: 500 }
+      );
+    }
+
+    const rows = (data ?? []) as Array<{
+      run_id: string;
+      run_start_at: string;
+      section_key: string;
+      section_label: string;
+      row_label: string;
+      lead_count: number;
+    }>;
+
+    const columns = buildRunColumns(rows);
+    const sections = pivotCountRows(rows, columns);
+
+    const payload: AllRunsPayload = { columns, sections };
+
+    return NextResponse.json({ success: true, data: payload });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("GET /api/dashboard/traffic:", message);
+    console.error("GET /api/dashboard/traffic:", err);
     return NextResponse.json(
-      { success: false, error: message },
+      { success: false, error: "Failed to load traffic data" },
       { status: 500 }
     );
   }

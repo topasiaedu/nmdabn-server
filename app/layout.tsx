@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { NavTabs } from "@/components/NavTabs";
+import { ProjectProvider } from "@/lib/project-context";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -15,8 +16,10 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body suppressHydrationWarning>
-        <NavTabs />
-        <main>{children}</main>
+        <ProjectProvider>
+          <NavTabs />
+          <main>{children}</main>
+        </ProjectProvider>
       </body>
     </html>
   );

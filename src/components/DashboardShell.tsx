@@ -1,409 +1,270 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { AlertTriangle, Building2, RefreshCw } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import type { DashboardContext } from "@/components/DashboardContext";
-import {
-  fetchProjects,
-  fetchWebinarRuns,
-  fetchWorkspaces,
-} from "@/features/traffic/services/api";
 import { useSupabaseSession } from "@/features/traffic/hooks/useSupabaseSession";
-import type { ProjectItem, WebinarRunListItem, WorkspaceItem } from "@/features/traffic/types";
+import { useProjectContext } from "@/lib/project-context";
 
 const LS_AUTH = "auth_token";
-const LS_WORKSPACE = "workspace_id";
-const LS_PROJECT = "project_id";
 
 type DashboardShellProps = {
   children: (ctx: DashboardContext) => React.ReactNode;
 };
 
 /**
- * Shared auth, workspace/project/webinar run selectors, optional date range, and localStorage sync for settings pages.
+ * Shared auth guard and project-context bridge for all dashboard pages.
+ * - Shows login form when the user is not authenticated.
+ * - Reads workspace + project from ProjectContext (no filter bar).
+ * - Renders children with a simplified DashboardContext once ready.
  */
 export function DashboardShell(props: DashboardShellProps): React.ReactElement {
   const { children } = props;
   const { accessToken, loggedIn, loading: authLoading } = useSupabaseSession();
+  const {
+    workspaceId,
+    workspaceName,
+    projectId,
+    selectedProject,
+    projects,
+    loading: projectsLoading,
+    error: projectsError,
+  } = useProjectContext();
 
+  /* ── Login form state ────────────────────────────────────────────────────── */
   const [email, setEmail] = useState<string>("");
   const [password, setPassword] = useState<string>("");
   const [authError, setAuthError] = useState<string>("");
+  const [rememberMe, setRememberMe] = useState<boolean>(true);
 
-  const [workspaces, setWorkspaces] = useState<WorkspaceItem[]>([]);
-  const [workspaceId, setWorkspaceId] = useState<string>("");
-  const [projects, setProjects] = useState<ProjectItem[]>([]);
-  const [projectId, setProjectId] = useState<string>("");
-
-  const [allWebinarRuns, setAllWebinarRuns] = useState<WebinarRunListItem[]>(
-    []
-  );
-  const [webinarRunId, setWebinarRunId] = useState<string>("");
-
-  const [dateFromInput, setDateFromInput] = useState<string>("");
-  const [dateToInput, setDateToInput] = useState<string>("");
-
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const wasLoggedIn = useRef<boolean>(false);
+  const [sessionExpired, setSessionExpired] = useState<boolean>(false);
 
   useEffect(() => {
-    if (!loggedIn) {
-      setAuthError("");
+    if (loggedIn) {
+      wasLoggedIn.current = true;
+      setSessionExpired(false);
+    } else if (!authLoading && wasLoggedIn.current) {
+      setSessionExpired(true);
     }
-  }, [loggedIn]);
+  }, [loggedIn, authLoading]);
 
-  /** Persist Supabase JWT for `/settings` routes that use getAuthHeaders(). */
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
+    if (!loggedIn) setAuthError("");
+    if (email !== "" || password !== "") setSessionExpired(false);
+  }, [loggedIn, email, password]);
+
+  /* Persist JWT so settings pages can use getAuthHeaders(). */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
     if (loggedIn && accessToken.trim() !== "") {
       window.localStorage.setItem(LS_AUTH, accessToken);
     }
   }, [accessToken, loggedIn]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    if (workspaceId !== "") {
-      window.localStorage.setItem(LS_WORKSPACE, workspaceId);
-    }
-  }, [workspaceId]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    if (projectId !== "") {
-      window.localStorage.setItem(LS_PROJECT, projectId);
-    }
-  }, [projectId]);
-
-  useEffect(() => {
-    if (!loggedIn) {
-      return;
-    }
-    let cancelled = false;
-    async function run(): Promise<void> {
-      try {
-        const result = await fetchWorkspaces(accessToken);
-        if (cancelled) {
-          return;
-        }
-        setWorkspaces(result);
-        setLoadError(null);
-        if (result.length === 0) {
-          setWorkspaceId("");
-          return;
-        }
-        let preferred = "";
-        if (typeof window !== "undefined") {
-          const stored = window.localStorage.getItem(LS_WORKSPACE);
-          if (
-            stored !== null &&
-            stored !== "" &&
-            result.some((w) => w.id === stored)
-          ) {
-            preferred = stored;
-          }
-        }
-        setWorkspaceId((prev) => {
-          if (preferred !== "") {
-            return preferred;
-          }
-          if (prev !== "" && result.some((w) => w.id === prev)) {
-            return prev;
-          }
-          return result[0]?.id ?? "";
-        });
-      } catch (requestError) {
-        if (!cancelled) {
-          setLoadError(
-            requestError instanceof Error
-              ? requestError.message
-              : "Failed to load workspaces."
-          );
-        }
-      }
-    }
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, [accessToken, loggedIn]);
-
-  useEffect(() => {
-    if (!loggedIn || workspaceId === "") {
-      return;
-    }
-    let cancelled = false;
-    async function run(): Promise<void> {
-      try {
-        const result = await fetchProjects(accessToken, workspaceId);
-        if (cancelled) {
-          return;
-        }
-        setProjects(result);
-        setLoadError(null);
-        if (result.length === 0) {
-          setProjectId("");
-          return;
-        }
-        let preferred = "";
-        if (typeof window !== "undefined") {
-          const stored = window.localStorage.getItem(LS_PROJECT);
-          if (
-            stored !== null &&
-            stored !== "" &&
-            result.some((p) => p.id === stored)
-          ) {
-            preferred = stored;
-          }
-        }
-        setProjectId((prev) => {
-          if (preferred !== "") {
-            return preferred;
-          }
-          if (prev !== "" && result.some((p) => p.id === prev)) {
-            return prev;
-          }
-          return result[0]?.id ?? "";
-        });
-      } catch (requestError) {
-        if (!cancelled) {
-          setLoadError(
-            requestError instanceof Error
-              ? requestError.message
-              : "Failed to load projects."
-          );
-        }
-      }
-    }
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, [accessToken, loggedIn, workspaceId]);
-
-  useEffect(() => {
-    if (!loggedIn || workspaceId === "") {
-      return;
-    }
-    let cancelled = false;
-    async function run(): Promise<void> {
-      try {
-        const result = await fetchWebinarRuns(accessToken, workspaceId);
-        if (cancelled) {
-          return;
-        }
-        setAllWebinarRuns(result);
-        setLoadError(null);
-      } catch (requestError) {
-        if (!cancelled) {
-          setLoadError(
-            requestError instanceof Error
-              ? requestError.message
-              : "Failed to load webinar runs."
-          );
-        }
-      }
-    }
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, [accessToken, loggedIn, workspaceId]);
-
-  const runsForProject = useMemo(
-    () => allWebinarRuns.filter((run) => run.project_id === projectId),
-    [allWebinarRuns, projectId]
-  );
-
-  useEffect(() => {
-    if (projectId === "") {
-      setWebinarRunId("");
-      return;
-    }
-    if (runsForProject.length === 0) {
-      setWebinarRunId("");
-      return;
-    }
-    setWebinarRunId((prev) => {
-      if (prev !== "" && runsForProject.some((r) => r.id === prev)) {
-        return prev;
-      }
-      return runsForProject[0]?.id ?? "";
-    });
-  }, [projectId, runsForProject]);
-
-  const onSignOut = useCallback((): void => {
-    if (typeof window !== "undefined") {
-      window.localStorage.removeItem(LS_AUTH);
-      window.localStorage.removeItem(LS_WORKSPACE);
-      window.localStorage.removeItem(LS_PROJECT);
-    }
-    void supabase.auth.signOut();
-  }, []);
-
-  const dateFrom: string | null =
-    dateFromInput.trim() === "" ? null : dateFromInput.trim();
-  const dateTo: string | null =
-    dateToInput.trim() === "" ? null : dateToInput.trim();
-
-  const ctx: DashboardContext = {
-    accessToken,
-    workspaceId,
-    projectId,
-    webinarRunId,
-    dateFrom,
-    dateTo,
-  };
-
-  if (!loggedIn) {
-    const missingSupabaseEnv =
-      (process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? "") === "" ||
-      (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? "") === "";
-
-    if (authLoading) {
-      return (
-        <div>
-          <p className="muted">Checking session...</p>
-        </div>
-      );
-    }
-
+  /* ── Auth loading ────────────────────────────────────────────────────────── */
+  if (authLoading) {
     return (
-      <div>
-        <p className="muted">Sign in with your Supabase account.</p>
-        <div className="card">
-          {missingSupabaseEnv ? (
-            <p className="error">
-              Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY.
-            </p>
-          ) : null}
-          <label>
-            Email
-            <input
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="you@example.com"
-            />
-          </label>
-          <label>
-            Password
-            <input
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="password"
-            />
-          </label>
-          <button
-            type="button"
-            onClick={() => {
-              setAuthError("");
-              if (email.trim() === "" || password.trim() === "") {
-                setAuthError("Email and password are required.");
-                return;
-              }
-              void supabase.auth
-                .signInWithPassword({ email: email.trim(), password })
-                .then(({ error: signInError }) => {
-                  if (signInError !== null) {
-                    setAuthError(signInError.message);
-                  }
-                });
-            }}
-          >
-            Sign in
-          </button>
-          {authError !== "" ? <p className="error">{authError}</p> : null}
+      <div className="flex items-center justify-center min-h-screen bg-slate-50">
+        <div className="flex items-center gap-2 text-sm text-slate-500">
+          <RefreshCw size={16} className="animate-spin" />
+          Checking session…
         </div>
       </div>
     );
   }
 
-  return (
-    <div>
-      <div className="toolbar flex flex-wrap items-center gap-3">
-        <button type="button" onClick={onSignOut}>
-          Sign out
-        </button>
-      </div>
+  /* ── Login form ──────────────────────────────────────────────────────────── */
+  if (!loggedIn) {
+    const missingSupabaseEnv =
+      (process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? "") === "" ||
+      (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? "") === "";
 
-      {loadError !== null ? <p className="error">{loadError}</p> : null}
+    const handleSignIn = (): void => {
+      setAuthError("");
+      if (email.trim() === "" || password.trim() === "") {
+        setAuthError("Email and password are required.");
+        return;
+      }
+      void supabase.auth
+        .signInWithPassword({ email: email.trim(), password })
+        .then(({ error: signInError }) => {
+          if (signInError !== null) {
+            setAuthError(signInError.message);
+            return;
+          }
+          if (!rememberMe && typeof window !== "undefined") {
+            const keys = Object.keys(window.localStorage).filter(
+              (k) => k.startsWith("sb-") && k.endsWith("-auth-token")
+            );
+            for (const key of keys) {
+              const value = window.localStorage.getItem(key);
+              if (value !== null) {
+                window.sessionStorage.setItem(key, value);
+                window.localStorage.removeItem(key);
+              }
+            }
+          }
+        });
+    };
 
-      <div className="card">
-        <label>
-          Workspace
-          <select
-            value={workspaceId}
-            onChange={(event) => setWorkspaceId(event.target.value)}
-          >
-            {workspaces.length === 0 ? (
-              <option value="">No workspaces</option>
-            ) : null}
-            {workspaces.map((workspace) => (
-              <option key={workspace.id} value={workspace.id}>
-                {workspace.name} ({workspace.role})
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Project
-          <select
-            value={projectId}
-            onChange={(event) => setProjectId(event.target.value)}
-          >
-            {projects.length === 0 ? (
-              <option value="">No projects</option>
-            ) : null}
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Webinar run
-          <select
-            value={webinarRunId}
-            onChange={(event) => setWebinarRunId(event.target.value)}
-            disabled={runsForProject.length === 0}
-          >
-            {runsForProject.length === 0 ? (
-              <option value="">No runs for this project</option>
-            ) : null}
-            {runsForProject.map((run) => (
-              <option key={run.id} value={run.id}>
-                {run.display_label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="row mt-2 flex-wrap">
-          <label className="mb-0 flex-1 min-w-[140px]">
-            Date from
-            <input
-              type="date"
-              value={dateFromInput}
-              onChange={(event) => setDateFromInput(event.target.value)}
-            />
-          </label>
-          <label className="mb-0 flex-1 min-w-[140px]">
-            Date to
-            <input
-              type="date"
-              value={dateToInput}
-              onChange={(event) => setDateToInput(event.target.value)}
-            />
-          </label>
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+        <div className="w-full max-w-sm">
+          <div className="text-center mb-8">
+            <h1 className="text-2xl font-bold text-slate-900">NM Media</h1>
+            <p className="mt-2 text-sm text-slate-500">
+              Sign in to your dashboard
+            </p>
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
+            {missingSupabaseEnv && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">
+                Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY.
+              </div>
+            )}
+
+            {sessionExpired && authError === "" && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+                Your session has expired. Please sign in again.
+              </div>
+            )}
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSignIn();
+              }}
+              className="space-y-4"
+            >
+              <label>
+                <span className="text-sm font-medium text-slate-700 mb-1 block">
+                  Email
+                </span>
+                <input
+                  id="login-email"
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="you@example.com"
+                  className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 w-full"
+                />
+              </label>
+
+              <label>
+                <span className="text-sm font-medium text-slate-700 mb-1 block">
+                  Password
+                </span>
+                <input
+                  id="login-password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="••••••••"
+                  className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 w-full"
+                />
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
+                />
+                <span className="text-sm text-slate-600">Remember me</span>
+              </label>
+
+              {authError !== "" && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">
+                  {authError}
+                </div>
+              )}
+
+              <button
+                id="login-submit"
+                type="submit"
+                className="w-full bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+              >
+                Sign in
+              </button>
+            </form>
+          </div>
         </div>
       </div>
+    );
+  }
 
-      {children(ctx)}
-    </div>
-  );
+  /* ── Logged in — determine empty states ─────────────────────────────────── */
+
+  if (projectsLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh] text-sm text-slate-500">
+        <RefreshCw size={16} className="animate-spin mr-2" />
+        Loading projects…
+      </div>
+    );
+  }
+
+  if (projectsError !== null) {
+    return (
+      <div className="mx-6 mt-4 bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-800">
+        {projectsError}
+      </div>
+    );
+  }
+
+  /** Level 1: user is in no workspace. */
+  if (workspaceId === "") {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-96 text-center p-8">
+        <Building2 size={48} className="text-slate-300 mb-4" />
+        <p className="text-sm font-medium text-slate-700">
+          You haven&rsquo;t been added to a workspace yet.
+        </p>
+        <p className="mt-1 text-sm text-slate-500">
+          Contact your NM Media admin to get access.
+        </p>
+      </div>
+    );
+  }
+
+  /** Level 2: workspace exists but no projects. */
+  if (projects.length === 0) {
+    return (
+      <div className="mx-6 mt-4 bg-amber-50 border-l-4 border-amber-500 rounded-r-lg p-4 flex items-start gap-3">
+        <AlertTriangle size={16} className="text-amber-500 mt-0.5 shrink-0" />
+        <div>
+          <p className="text-sm text-amber-800">
+            No projects configured for this workspace. Set up your first project
+            to start tracking.
+          </p>
+          <Link
+            href="/settings"
+            className="inline-block mt-2 text-xs font-medium text-amber-700 underline"
+          >
+            Setup →
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const ctx: DashboardContext = {
+    accessToken,
+    workspaceId,
+    workspaceName,
+    projectId,
+    projectName: selectedProject?.name ?? "",
+    projectAgencyLineTags: selectedProject?.traffic_agency_line_tags ?? null,
+    projectBreakdownFields: selectedProject?.traffic_breakdown_fields ?? null,
+    ghlLocationId: selectedProject?.ghl_location_id ?? null,
+  };
+
+  return <>{children(ctx)}</>;
 }

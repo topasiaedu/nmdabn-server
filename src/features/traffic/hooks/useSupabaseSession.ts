@@ -16,6 +16,22 @@ export function useSupabaseSession(): {
   useEffect(() => {
     let mounted = true;
 
+    // If the user logged in with "Remember me" unchecked, Supabase's session was
+    // moved to sessionStorage. Restore it back into localStorage so the Supabase
+    // client can pick it up on this page load, then remove it from sessionStorage.
+    if (typeof window !== "undefined") {
+      const keys = Object.keys(window.sessionStorage).filter(
+        (k) => k.startsWith("sb-") && k.endsWith("-auth-token")
+      );
+      for (const key of keys) {
+        const value = window.sessionStorage.getItem(key);
+        if (value !== null && window.localStorage.getItem(key) === null) {
+          window.localStorage.setItem(key, value);
+          window.sessionStorage.removeItem(key);
+        }
+      }
+    }
+
     void supabase.auth.getSession().then(({ data }) => {
       if (!mounted) {
         return;

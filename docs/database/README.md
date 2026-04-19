@@ -16,6 +16,9 @@ Run them in order in your Postgres host (e.g. Supabase SQL Editor) when you adop
 | [migrations/008_project_ghl_traffic_settings.sql](migrations/008_project_ghl_traffic_settings.sql) | **Projects:** `ghl_location_id`, `traffic_occupation_field_id`, optional `traffic_agency_line_tags` JSONB per sub-account |
 | [migrations/009_ghl_custom_fields_catalog.sql](migrations/009_ghl_custom_fields_catalog.sql) | **Custom field catalog:** `ghl_custom_fields` + project `traffic_occupation_field_key` for key/name-based mapping |
 | [migrations/010_ghl_connections.sql](migrations/010_ghl_connections.sql) | **Multi-location GHL:** `ghl_connections` (per-project location + encrypted token); webhook + sync resolve credentials by `ghl_location_id` |
+| [migrations/022_traffic_utm_last_touch.sql](migrations/022_traffic_utm_last_touch.sql) | **Traffic (all-runs):** `get_traffic_all_runs` — last-touch UTM axes only (`p_utm_axes`), combination row labels |
+| [migrations/023_traffic_from_journey_optin.sql](migrations/023_traffic_from_journey_optin.sql) | **Traffic:** `get_traffic_all_runs` reads UTM from latest `journey_events` `optin` payload (replaces attribution lateral) |
+| [migrations/024_zoom_attendance_segments_and_app_contacts.sql](migrations/024_zoom_attendance_segments_and_app_contacts.sql) | **Zoom:** `zoom_attendance_segments` (per join segment) + `ghl_contacts.is_app_only` / `app_only_project_id` for in-app-only Zoom identities |
 
 Add new files as `011_…`, etc.
 

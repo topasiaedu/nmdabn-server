@@ -206,11 +206,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const eventEndAtRaw = body.event_end_at;
 
-  const formatRaw = body.format;
-
-  const locationId = body.location_id;
-
+  // format, location_id, and timezone are no longer required from callers.
+  // format defaults to 'single_day'; location_id is derived from the project;
+  // timezone is accepted from caller (e.g. browser Intl.DateTimeFormat timezone) and defaults to 'UTC'.
   const timezoneRaw = body.timezone;
+  const timezone =
+    typeof timezoneRaw === "string" && timezoneRaw.trim() !== ""
+      ? timezoneRaw.trim()
+      : "UTC";
 
 
 
@@ -292,41 +295,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
 
 
-  if (typeof formatRaw !== "string" || formatRaw.trim() === "") {
-
-    return NextResponse.json(
-
-      { success: false, error: "format is required" },
-
-      { status: 400 }
-
-    );
-
-  }
-
-  if (typeof locationId !== "string" || locationId.trim() === "") {
-
-    return NextResponse.json(
-
-      { success: false, error: "location_id is required" },
-
-      { status: 400 }
-
-    );
-
-  }
-
-  if (typeof timezoneRaw !== "string" || timezoneRaw.trim() === "") {
-
-    return NextResponse.json(
-
-      { success: false, error: "timezone is required" },
-
-      { status: 400 }
-
-    );
-
-  }
 
 
 
@@ -446,7 +414,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
       .from("projects")
 
-      .select("id")
+      .select("id, ghl_location_id")
 
       .eq("id", projectIdRaw)
 
@@ -468,6 +436,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     }
 
+    if (projectRow.ghl_location_id === null || projectRow.ghl_location_id === "") {
+
+      return NextResponse.json(
+
+        {
+
+          success: false,
+
+          error:
+
+            "Project has no GoHighLevel Location ID configured. Set it in Project Settings → GoHighLevel tab first.",
+
+        },
+
+        { status: 400 }
+
+      );
+
+    }
+
 
 
     const insert: WebinarRunInsert = {
@@ -480,11 +468,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
       event_end_at: eventEndAt,
 
-      format: formatRaw.trim(),
+      format: "single_day",
 
-      location_id: locationId.trim(),
+      location_id: projectRow.ghl_location_id,
 
-      timezone: timezoneRaw.trim(),
+      timezone,
 
       zoom_meeting_id: zoomMeetingId,
 
