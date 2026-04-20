@@ -344,7 +344,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       }
     }
 
-    const redirectTarget = new URL("/settings", request.nextUrl.origin);
+    const redirectTarget = new URL(
+      `/settings/projects/${state.projectId}`,
+      request.nextUrl.origin
+    );
+    redirectTarget.searchParams.set("tab", "meta");
     redirectTarget.searchParams.set("meta_connected", "1");
     return NextResponse.redirect(redirectTarget);
   } catch (e) {

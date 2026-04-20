@@ -56,6 +56,19 @@ type WebinarRunRow = {
   zoom_source_type: string | null;
 };
 
+type MetaAdAccountRow = {
+  id: string;
+  agency_line: string;
+  created_at: string;
+  integration_account_id: string;
+  integration_accounts: {
+    display_name: string | null;
+    account_id: string | null;
+    expires_at: string | null;
+    extra: Record<string, unknown> | null;
+  } | null;
+};
+
 /** True when this run can call the Zoom participant report API. */
 function webinarRunHasZoomReportConfig(r: WebinarRunRow): boolean {
   const mid = r.zoom_meeting_id;
@@ -87,6 +100,7 @@ const TABS = [
   { id: "zoom", label: "Zoom" },
   { id: "runs", label: "Webinar Runs" },
   { id: "traffic", label: "Traffic" },
+  { id: "meta", label: "Meta Ads" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -145,6 +159,16 @@ function ProjectSettingsContent(): React.ReactElement {
     null
   );
 
+  // Meta Ads state
+  const [metaConnections, setMetaConnections] = useState<MetaAdAccountRow[]>([]);
+  const [metaAgencyLine, setMetaAgencyLine] = useState("");
+  const [metaConnecting, setMetaConnecting] = useState(false);
+  const [metaConnectError, setMetaConnectError] = useState<string | null>(null);
+  const [metaSyncing, setMetaSyncing] = useState(false);
+  const [metaSyncResult, setMetaSyncResult] = useState<string | null>(null);
+  const [metaSyncError, setMetaSyncError] = useState<string | null>(null);
+  const metaJustConnected = searchParams.get("meta_connected") === "1";
+
   const runsForProject = useMemo(
     () => webinarRuns.filter((r) => r.project_id === projectId),
     [webinarRuns, projectId]
@@ -170,7 +194,7 @@ function ProjectSettingsContent(): React.ReactElement {
     setLoadError(null);
 
     try {
-      const [projRes, ghlRes, runsRes] = await Promise.all([
+      const [projRes, ghlRes, runsRes, metaRes] = await Promise.all([
         fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
           headers: {
             Authorization: `Bearer ${accessToken}`,
@@ -189,6 +213,12 @@ function ProjectSettingsContent(): React.ReactElement {
           )}&project_id=${encodeURIComponent(projectId)}`,
           { headers: { Authorization: `Bearer ${accessToken}` } }
         ),
+        fetch(`/api/projects/${encodeURIComponent(projectId)}/connections/meta`, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "X-Workspace-Id": workspaceId,
+          },
+        }),
       ]);
 
       const projJson: unknown = await projRes.json();
@@ -305,6 +335,18 @@ function ProjectSettingsContent(): React.ReactElement {
           });
         }
         setWebinarRuns(normalized);
+      }
+
+      const metaJson: unknown = await metaRes.json();
+      if (
+        typeof metaJson === "object" &&
+        metaJson !== null &&
+        "success" in metaJson &&
+        (metaJson as { success: unknown }).success === true &&
+        "data" in metaJson &&
+        Array.isArray((metaJson as { data: unknown }).data)
+      ) {
+        setMetaConnections((metaJson as { data: MetaAdAccountRow[] }).data);
       }
     } catch {
       setLoadError("Network error loading project.");
@@ -617,6 +659,98 @@ function ProjectSettingsContent(): React.ReactElement {
     } finally {
       setZoomSingleSyncHint(null);
       setRunZoomSyncBusyId(null);
+    }
+  }
+
+  /** Initiates Meta OAuth flow: calls authorize endpoint, then redirects to Meta. */
+  async function handleConnectMeta(): Promise<void> {
+    const line = metaAgencyLine.trim();
+    if (line === "") {
+      setMetaConnectError("Agency line is required (e.g. OM, NM).");
+      return;
+    }
+    setMetaConnecting(true);
+    setMetaConnectError(null);
+    try {
+      const params = new URLSearchParams({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        agency_line: line,
+      });
+      const res = await fetch(`/api/auth/meta/authorize?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const json: unknown = await res.json();
+      if (
+        typeof json === "object" &&
+        json !== null &&
+        "success" in json &&
+        (json as { success: unknown }).success === true &&
+        "data" in json &&
+        typeof (json as { data: unknown }).data === "object" &&
+        (json as { data: unknown }).data !== null
+      ) {
+        const authUrl = (json as { data: { authUrl: string } }).data.authUrl;
+        globalThis.location.href = authUrl;
+        return;
+      }
+      const errMsg =
+        typeof json === "object" &&
+        json !== null &&
+        "error" in json &&
+        typeof (json as { error: string }).error === "string"
+          ? (json as { error: string }).error
+          : "Failed to get authorization URL.";
+      setMetaConnectError(errMsg);
+    } catch {
+      setMetaConnectError("Network error starting Meta connection.");
+    } finally {
+      setMetaConnecting(false);
+    }
+  }
+
+  /** Triggers Meta Ads sync for all linked accounts on this project. */
+  async function handleSyncMeta(): Promise<void> {
+    setMetaSyncing(true);
+    setMetaSyncResult(null);
+    setMetaSyncError(null);
+    try {
+      const res = await fetch("/api/actions/sync/meta-ads", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ workspace_id: workspaceId, project_id: projectId }),
+      });
+      const json: unknown = await res.json();
+      if (
+        typeof json === "object" &&
+        json !== null &&
+        "success" in json &&
+        (json as { success: unknown }).success === true
+      ) {
+        const j = json as Record<string, unknown>;
+        const accounts = typeof j.accountsSynced === "number" ? j.accountsSynced : 0;
+        const campaigns = typeof j.campaignsSynced === "number" ? j.campaignsSynced : 0;
+        const insights = typeof j.insightRowsSynced === "number" ? j.insightRowsSynced : 0;
+        setMetaSyncResult(
+          `Synced ${String(accounts)} account(s), ${String(campaigns)} campaign(s), ${String(insights)} insight rows.`
+        );
+      } else {
+        const errMsg =
+          typeof json === "object" &&
+          json !== null &&
+          "error" in json &&
+          typeof (json as { error: string }).error === "string"
+            ? (json as { error: string }).error
+            : "Meta sync failed.";
+        setMetaSyncError(errMsg);
+      }
+    } catch {
+      setMetaSyncError("Network error during Meta sync.");
+    } finally {
+      setMetaSyncing(false);
     }
   }
 
@@ -1432,6 +1566,159 @@ function ProjectSettingsContent(): React.ReactElement {
                     </table>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* ── Meta Ads Tab — outside main form (OAuth flow, not a save) ── */}
+            {currentTab === "meta" && (
+              <div className="space-y-6">
+
+                {/* Success banner after OAuth redirect */}
+                {metaJustConnected && (
+                  <div className="flex items-start gap-3 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 max-w-2xl">
+                    <CheckCircle2 size={16} className="text-emerald-500 shrink-0 mt-0.5" />
+                    <div className="text-sm text-emerald-800">
+                      <p className="font-medium">Meta Ads account connected successfully.</p>
+                      <p className="text-xs text-emerald-700 mt-0.5">
+                        The account is now linked to this project. Use the Sync button below to pull the first batch of campaigns and insights.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Connected accounts list */}
+                <div className="max-w-2xl">
+                  <h3 className="text-sm font-medium text-slate-900 mb-3">Connected Ad Accounts</h3>
+                  {metaConnections.length === 0 ? (
+                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-6 text-center text-sm text-slate-500">
+                      No Meta ad accounts linked yet. Use the Connect button below to add one.
+                    </div>
+                  ) : (
+                    <ul className="border border-slate-200 bg-white rounded-lg divide-y divide-slate-100 mb-4">
+                      {metaConnections.map((conn) => {
+                        const acc = conn.integration_accounts;
+                        const expiresAt =
+                          acc?.expires_at !== null && acc?.expires_at !== undefined
+                            ? new Date(acc.expires_at)
+                            : null;
+                        const isExpired = expiresAt !== null && expiresAt < new Date();
+                        const extraCurrency =
+                          acc?.extra !== null &&
+                          acc?.extra !== undefined &&
+                          typeof acc.extra.currency === "string"
+                            ? acc.extra.currency
+                            : null;
+                        return (
+                          <li key={conn.id} className="p-4 flex items-start justify-between gap-4">
+                            <div className="space-y-0.5 min-w-0">
+                              <p className="text-sm font-medium text-slate-900 truncate">
+                                {acc?.display_name ?? acc?.account_id ?? conn.integration_account_id}
+                              </p>
+                              <p className="text-xs text-slate-500 font-mono">
+                                {acc?.account_id ?? "—"}
+                                {extraCurrency !== null && (
+                                  <span className="ml-2 normal-case font-sans text-slate-400">{extraCurrency}</span>
+                                )}
+                              </p>
+                              <p className="text-xs text-slate-400">
+                                Agency line:{" "}
+                                <span className="font-semibold text-slate-600">{conn.agency_line}</span>
+                                {" · "}Connected {new Date(conn.created_at).toLocaleDateString()}
+                              </p>
+                            </div>
+                            <div className="shrink-0">
+                              {isExpired && (
+                                <span className="text-xs font-medium bg-red-100 text-red-700 px-2 py-0.5 rounded">
+                                  Token expired
+                                </span>
+                              )}
+                              {!isExpired && expiresAt !== null && (
+                                <span className="text-xs text-slate-400">
+                                  Expires {expiresAt.toLocaleDateString()}
+                                </span>
+                              )}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+
+                  {/* Sync */}
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      disabled={metaSyncing || metaConnections.length === 0}
+                      onClick={() => void handleSyncMeta()}
+                      className="flex items-center gap-2 bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+                    >
+                      {metaSyncing ? (
+                        <Loader2 size={16} className="animate-spin shrink-0" />
+                      ) : (
+                        <RefreshCw size={16} className="shrink-0" />
+                      )}
+                      {metaSyncing ? "Syncing…" : "Sync Meta Ads now"}
+                    </button>
+                  </div>
+                  {metaSyncResult !== null && (
+                    <div className="mt-3 bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm text-emerald-900 flex items-start gap-2">
+                      <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-600" />
+                      <span>{metaSyncResult}</span>
+                    </div>
+                  )}
+                  {metaSyncError !== null && (
+                    <div className="mt-3 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800 flex items-start gap-2">
+                      <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                      <span>{metaSyncError}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Connect new account */}
+                <div className="max-w-2xl border-t border-slate-100 pt-6">
+                  <h3 className="text-sm font-medium text-slate-900 mb-1">Connect a Meta Ad Account</h3>
+                  <p className="text-xs text-slate-500 mb-4">
+                    Each agency line can have its own Meta ad account. You will be redirected to Meta to
+                    authorize access. The token lasts ~60 days and will auto-refresh when syncing.
+                  </p>
+                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-5 space-y-4">
+                    <label className="block max-w-xs">
+                      <span className="text-xs font-medium text-slate-700 block mb-1 uppercase tracking-wide">
+                        Agency Line Code
+                      </span>
+                      <input
+                        type="text"
+                        className="w-full bg-white border border-slate-200 rounded-md px-3 py-2 text-sm font-mono text-slate-900 uppercase placeholder:normal-case placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        placeholder="e.g. OM"
+                        value={metaAgencyLine}
+                        onChange={(e) => setMetaAgencyLine(e.target.value.toUpperCase())}
+                      />
+                      <p className="text-xs text-slate-400 mt-1">
+                        Must match the agency line codes configured in the Traffic tab.
+                      </p>
+                    </label>
+                    {metaConnectError !== null && (
+                      <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700">
+                        <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                        <span>{metaConnectError}</span>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      disabled={metaConnecting}
+                      onClick={() => void handleConnectMeta()}
+                      className="flex items-center gap-2 bg-[#1877F2] text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-[#166FE5] focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                    >
+                      {metaConnecting ? (
+                        <Loader2 size={16} className="animate-spin shrink-0" />
+                      ) : (
+                        <LinkIcon size={16} className="shrink-0" />
+                      )}
+                      {metaConnecting ? "Redirecting to Meta…" : "Connect with Meta"}
+                    </button>
+                  </div>
+                </div>
+
               </div>
             )}
           </div>
