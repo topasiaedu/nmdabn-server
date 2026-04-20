@@ -11,7 +11,7 @@ export const metadata: Metadata = {
  */
 export default function PrivacyPolicyPage(): React.ReactElement {
   const lastUpdated = "20 April 2026";
-  const contactEmail = "support@nmmedia.com";
+  const contactEmail = "support@topasiaedu.com";
   const companyName = "NM Media";
   const appName = "NM Media Analytics Platform";
 
