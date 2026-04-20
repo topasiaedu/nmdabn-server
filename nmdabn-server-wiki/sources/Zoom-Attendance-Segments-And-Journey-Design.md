@@ -6,7 +6,9 @@
 
 ## Summary
 
-This ingest records a **planned** split between (1) a dedicated **`zoom_attendance_segments`** table for granular join/leave facts and concurrency analytics, and (2) **`journey_events`** as the **rollup** (“attended this run”) for Show Up and collapsed journey UI. Zoom cloud recording is optional UX (**manual scrub** near the chart); deep graph-to-video seek is **out of scope** for v1.
+This ingest records the **2026-04-15 agreed design**: a split between (1) a dedicated **`zoom_attendance_segments`** table for granular join/leave facts and concurrency analytics, and (2) **`journey_events`** as the **rollup** (“attended this run”) for Show Up and collapsed journey UI. Zoom cloud recording is optional UX (**manual scrub** near the chart); deep graph-to-video seek is **out of scope** for v1.
+
+**Implementation status:** shipped in repo (migration **024**, sync service, mirror guard). See frozen recap `raw/sources/2026-04-16-zoom-attendance-implementation-shipped.md` and wiki digest [[Zoom-Attendance-Implementation-Shipped]].
 
 ## Key facts
 
@@ -16,13 +18,14 @@ This ingest records a **planned** split between (1) a dedicated **`zoom_attendan
 - **Mismatched Zoom email:** **App-only contact**; **no** GHL create/sync for that identity.
 - **Schema:** New table for segments + keep `journey_events` for attended signal; DDL remains in repo `docs/database/migrations/` when implemented (wiki does not replace migrations per [[CLAUDE]]).
 
-## Open questions (for implementation phase)
+## Design-time questions (resolved in implementation — see [[Zoom-Attendance-Implementation-Shipped]])
 
-- Exact **idempotency key** per segment row (Zoom field stability across API versions).
-- Whether rollup **`journey_events`** row is **insert-once** or **upsert** when segments change on re-sync.
-- Whether **app-only contacts** live on `ghl_contacts` with a flag or on a separate `app_contacts` table (impacts FKs and RLS).
+- **Idempotency key:** stable composite from join time + email or Zoom participant id fields.
+- **Rollup:** **upsert** one `journey_events` attended row per contact per run; refresh totals on re-sync.
+- **App-only contacts:** **`ghl_contacts`** with `is_app_only` / `app_only_project_id`.
 
 ## Related
 
+- **Shipped recap:** [[Zoom-Attendance-Implementation-Shipped]]
 - **Concept (synthesis):** [[Zoom-Attendance-Segments-And-Journey]]
 - [[Buyer-Journey-Event-Store]] · [[Zoom-Integration-Architecture]] · [[Webinar-Run-Zoom-Linkage]] · [[Zoom]]

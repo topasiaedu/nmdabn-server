@@ -30,6 +30,16 @@ export interface GoogleConfig {
   redirectUri: string;
 }
 
+/**
+ * Present only when all three META_* env vars are set.
+ * Meta Ads OAuth — routes return 501 when absent.
+ */
+export interface MetaConfig {
+  appId: string;
+  appSecret: string;
+  redirectUri: string;
+}
+
 export interface EnvConfig {
   supabase: {
     url: string;
@@ -37,6 +47,8 @@ export interface EnvConfig {
   };
   /** Undefined when Google OAuth env vars are not configured. */
   google: GoogleConfig | undefined;
+  /** Undefined when Meta Ads OAuth env vars are not configured. */
+  meta: MetaConfig | undefined;
   server: {
     nodeEnv: string;
   };
@@ -117,12 +129,27 @@ function validateEnv(): EnvConfig {
       ? { clientId: googleClientId, clientSecret: googleClientSecret, redirectUri: googleRedirectUri }
       : undefined;
 
+  const metaAppId = process.env.META_APP_ID?.trim();
+  const metaAppSecret = process.env.META_APP_SECRET?.trim();
+  const metaRedirectUri = process.env.META_REDIRECT_URI?.trim();
+
+  const meta: MetaConfig | undefined =
+    metaAppId !== undefined &&
+    metaAppId !== "" &&
+    metaAppSecret !== undefined &&
+    metaAppSecret !== "" &&
+    metaRedirectUri !== undefined &&
+    metaRedirectUri !== ""
+      ? { appId: metaAppId, appSecret: metaAppSecret, redirectUri: metaRedirectUri }
+      : undefined;
+
   return {
     supabase: {
       url: supabaseUrl,
       serviceRoleKey: supabaseServiceRoleKey,
     },
     google,
+    meta,
     server: {
       nodeEnv: process.env.NODE_ENV || "development",
     },

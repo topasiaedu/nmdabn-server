@@ -37,7 +37,8 @@
 | [2026-04-13-phase1-execution-plan-and-zoom-webinar-design.md](raw/sources/2026-04-13-phase1-execution-plan-and-zoom-webinar-design.md) | Full Phase 1 build order (10 steps), Zoom S2S integration decisions, per-project Zoom accounts, journey_events schema, and 4 open decisions blocking completion. |
 | [2026-04-13-nextjs-consolidation-decision.md](raw/sources/2026-04-13-nextjs-consolidation-decision.md) | Decision to consolidate Express + Next.js into a single Next.js app. Rationale, directory structure before/after, route map, migration patterns, merged package.json. |
 | [2026-04-13-dashboard-architecture-redesign-all-runs.md](raw/sources/2026-04-13-dashboard-architecture-redesign-all-runs.md) | Full implementation record: all-runs column table redesign (15 tasks), migrations 019–021, ProjectContext, ColumnTable, pivot utilities, API rewrites, and backfill bug fix (5,061 contacts). |
-| [2026-04-15-zoom-attendance-segments-journey-design.md](raw/sources/2026-04-15-zoom-attendance-segments-journey-design.md) | Planned Zoom data model: `zoom_attendance_segments` + `journey_events` rollup; Show Up binary rule; app-only contacts; audience curve + optional recording scrub UX (not implemented). |
+| [2026-04-15-zoom-attendance-segments-journey-design.md](raw/sources/2026-04-15-zoom-attendance-segments-journey-design.md) | **Frozen design (2026-04-15):** `zoom_attendance_segments` + `journey_events` rollup; Show Up binary rule; app-only contacts; audience curve + optional recording scrub UX. Implementation: see `2026-04-16-zoom-attendance-implementation-shipped.md`. |
+| [2026-04-16-zoom-attendance-implementation-shipped.md](raw/sources/2026-04-16-zoom-attendance-implementation-shipped.md) | **Implementation recap:** migration 024, sync behavior (segments upsert + attended rollup upsert), app-only `ghl_contacts`, mirror guard for `nmdapp-` ids, API counters, CLI script parity; prerequisite = apply DDL before sync. |
 
 ### Raw assets (non-markdown, `raw/sources/`)
 
@@ -67,7 +68,8 @@
 | [[Phase-1-Execution-Plan-And-Zoom-Design]] | Full Phase 1 build order, Zoom S2S design decisions, journey_events schema, open decisions register. |
 | [[NextJS-Consolidation-Decision]] | Decision to consolidate into Next.js only. Rationale: event-driven ingestion model, no continuous loops needed. |
 | [[Dashboard-Architecture-Redesign-All-Runs]] | Implementation record: all-runs column table, migrations 019–021, ProjectContext, ColumnTable, API rewrites, and backfill bug fix. |
-| [[Zoom-Attendance-Segments-And-Journey-Design]] | Ingest of 2026-04-15 raw: segment table vs journey rollup, Show Up rules, app-only contacts, recording UX scope. |
+| [[Zoom-Attendance-Segments-And-Journey-Design]] | Ingest of 2026-04-15 raw: segment table vs journey rollup, Show Up rules, app-only contacts, recording UX scope. Links implementation recap ([[Zoom-Attendance-Implementation-Shipped]]). |
+| [[Zoom-Attendance-Implementation-Shipped]] | Ingest of 2026-04-16 raw: migration 024 shipped, sync + mirror behavior, ops prerequisite. |
 
 ## Concepts (`concepts/`)
 
@@ -77,17 +79,17 @@
 | [[GHL-Webhook-Security]] | Ed25519 vs RSA legacy, skip-verify guardrails, failure modes. |
 | [[Express-Raw-Webhook-Body]] | Why raw middleware before verify; proxy rules. |
 | [[GHL-Sync-Operations]] | Bulk npm vs webhook spawn; idempotency; scale / queue notes. |
-| [[Supabase-GHL-Mirror]] | Migrations 001–005 + 019–021 summary; dual-layer mirror; sync entry points. Updated 2026-04-13. |
+| [[Supabase-GHL-Mirror]] | Migrations 001–005 + 019–021 + 024 summary; dual-layer mirror; sync entry points. Updated 2026-04-16. |
 | [[SQL-First-Data-Layer]] | Columns-first philosophy for GHL mirror; link to `data-sync-principles.md`. |
 | [[Documentation-Lineage]] | Current-vs-archive documentation timeline and precedence rule. |
 | [[GHL-Contacts-Sync-Reliability]] | Practical reliability model for contacts sync pagination, retries, and throughput tuning. |
 | [[GHL-Multi-Location-Architecture]] | Target architecture for multi-project/multi-location GHL routing and sync execution. |
 | [[Sales-Tracking-Dashboard-Model]] | Atomic facts + dimensions model for four logical dashboards. |
 | [[Product-Phase-Roadmap]] | Phases 1–3 and engineering enablers (synthesis). |
-| [[Buyer-Journey-Event-Store]] | `journey_events` decided schema (migration 011) and Zoom attendance ingest path. Updated 2026-04-15: planned segment table + rollup (see Zoom-Attendance-Segments-And-Journey). |
-| [[Zoom-Attendance-Segments-And-Journey]] | Planned: `zoom_attendance_segments` for join/leave + charts; `journey_events` for attended rollup; app-only contacts; recording scrub UX. |
+| [[Buyer-Journey-Event-Store]] | `journey_events` schema (migration 011) and Zoom path: segments table + attended rollup after migration 024; app-only contacts. Updated 2026-04-16. |
+| [[Zoom-Attendance-Segments-And-Journey]] | Implemented: `zoom_attendance_segments` + `journey_events` attended rollup; app-only contacts; mirror guard. Recording scrub UX still optional. Updated 2026-04-16. |
 | [[Platform-Engineering-Direction]] | Updated 2026-04-13: single Next.js app (no separate Express), one Render service, async webhooks, cron for scheduled syncs. |
-| [[Zoom-Integration-Architecture]] | Zoom S2S OAuth flow, per-project credential chain, token caching, API endpoints, security notes. |
+| [[Zoom-Integration-Architecture]] | Zoom S2S OAuth flow, per-project credential chain, token caching, API endpoints, security notes. Updated 2026-04-16 (links to segment+rollup). |
 | [[Webinar-Run-Zoom-Linkage]] | Explicit `zoom_meeting_id` on `webinar_runs`; `zoom_source_type` field; sync service logic. |
 | [[Phase-1-Build-Order]] | Ordered execution plan (Step 1 ✅ done → Migration Step → Steps 2–10) with Next.js consolidation incorporated. |
 | [[Phase-1-Open-Decisions]] | Four unresolved decisions blocking Phase 1 completion: ad spend source, showed denominator, encryption, backfill scope. |
@@ -107,7 +109,7 @@
 |------|---------|
 | [entities/README.md](entities/README.md) | Entities folder hub; lists current entity pages. |
 | [[GoHighLevel]] | Vendor / integration entity; surfaces, wiki hub, external doc link. |
-| [[Zoom]] | Webinar vendor; attendance/duration inputs for dashboard and journey. |
+| [[Zoom]] | Webinar vendor; attendance/duration inputs for dashboard and journey; segment + rollup model shipped (see Zoom-Attendance pages). |
 
 ## Database and migrations (canonical in repo)
 

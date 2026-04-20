@@ -20,6 +20,7 @@ All migration files live in the **main repo** (not in this vault):
 | `019_traffic_breakdown_fields.sql` | `traffic_breakdown_fields JSONB` column on `projects` (see [[Traffic-Breakdown-Fields]]) |
 | `020_all_runs_rpcs.sql` | Four all-runs RPCs: `get_traffic_all_runs`, `get_showup_all_runs`, `get_buyer_behavior_all_runs`, `get_agency_all_runs` (see [[All-Runs-Column-Table]]) |
 | `021_showup_rpc_fallback.sql` | Replaces `get_showup_all_runs` with fallback for empty breakdown fields |
+| `024_zoom_attendance_segments_and_app_contacts.sql` | **`zoom_attendance_segments`**; **`ghl_contacts`** `is_app_only` / `app_only_project_id` for Zoom app-only identities ([[Zoom-Attendance-Segments-And-Journey]]) |
 
 ## Dual layer (see [[SQL-First-Data-Layer]])
 

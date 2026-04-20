@@ -19,6 +19,9 @@ Run them in order in your Postgres host (e.g. Supabase SQL Editor) when you adop
 | [migrations/022_traffic_utm_last_touch.sql](migrations/022_traffic_utm_last_touch.sql) | **Traffic (all-runs):** `get_traffic_all_runs` — last-touch UTM axes only (`p_utm_axes`), combination row labels |
 | [migrations/023_traffic_from_journey_optin.sql](migrations/023_traffic_from_journey_optin.sql) | **Traffic:** `get_traffic_all_runs` reads UTM from latest `journey_events` `optin` payload (replaces attribution lateral) |
 | [migrations/024_zoom_attendance_segments_and_app_contacts.sql](migrations/024_zoom_attendance_segments_and_app_contacts.sql) | **Zoom:** `zoom_attendance_segments` (per join segment) + `ghl_contacts.is_app_only` / `app_only_project_id` for in-app-only Zoom identities |
+| [migrations/025_meta_ads_mirror.sql](migrations/025_meta_ads_mirror.sql) | **Meta Ads:** `meta_ads` provider enum; `meta_campaigns`, `meta_insights`, `project_meta_ad_accounts`; `webinar_runs.spend_date_from` / `spend_date_to`; partial unique index on `integration_accounts` for OAuth upserts |
+| [migrations/026_meta_spend_attribution.sql](migrations/026_meta_spend_attribution.sql) | **Meta Ads:** `ad_spend_run_attribution` + `recompute_meta_spend_attribution(project_id)` for date-overlap spend |
+| [migrations/027_agency_rpc_with_spend.sql](migrations/027_agency_rpc_with_spend.sql) | **Agency RPCs:** `get_agency_stats` / `get_agency_all_runs` read attributed Meta spend + CPL/CPA |
 
 Add new files as `011_…`, etc.
 

@@ -237,3 +237,15 @@ Append-only timeline. **New entries go at the bottom.** Heading format: `## [YYY
 - Source page: [[Zoom-Attendance-Segments-And-Journey-Design]]
 - Concept added: [[Zoom-Attendance-Segments-And-Journey]]
 - Updated: [[Buyer-Journey-Event-Store]] (planned evolution section), [[Zoom-Integration-Architecture]] (related link), [[Zoom]] entity (related link), [[index]].
+
+## [2026-04-16] ingest | Zoom attendance implementation shipped (recap)
+
+- Raw: `raw/sources/2026-04-16-zoom-attendance-implementation-shipped.md` — migration **024**, segment upsert + journey rollup upsert, app-only `ghl_contacts`, `nmdapp-` mirror skip, API `segmentsUpserted` / `rollupsUpdated`, CLI script parity; apply DDL before sync.
+- Source page added: [[Zoom-Attendance-Implementation-Shipped]]
+- Source page updated: [[Zoom-Attendance-Segments-And-Journey-Design]] (implementation status + resolved design questions)
+- Concept updated: [[Zoom-Attendance-Segments-And-Journey]] (implemented flow, table roles, history note)
+- Concept updated: [[Buyer-Journey-Event-Store]] (Zoom idempotency + segment/rollup section replaces “planned evolution”)
+- Entity updated: [[Zoom]]
+- Concept updated: [[Supabase-GHL-Mirror]] (migration 024 row in manifest)
+- Concept updated: [[Zoom-Integration-Architecture]] (segment ingest status wording)
+- Updated: [[index]] (two raw rows, new source row, refreshed concept/entity summaries)

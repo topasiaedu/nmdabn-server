@@ -24,17 +24,15 @@ Table name: **`journey_events`**
 | `payload` | JSONB | Full vendor-specific fields |
 | `created_at` | TIMESTAMPTZ | DEFAULT NOW() |
 
-Idempotency key for Zoom upserts: `(zoom_meeting_id from payload, participant email)`.
+**Zoom attendance (after migration 024 + sync):** Participant lines land in **`zoom_attendance_segments`** first; **`journey_events`** holds **one attended rollup per contact per webinar run** (`source_system = zoom`, `event_type = attended`) with aggregated duration and segment metadata in `payload`. Segment idempotency uses `(webinar_run_id, idempotency_key)`; rollup rows are **upserted** when sync re-runs.
 
-## Planned evolution (2026-04-15)
+## Segment store + rollup (2026-04-15 design, implemented 2026-04-16)
 
-**Not implemented yet** — design captured in [[Zoom-Attendance-Segments-And-Journey-Design]] (raw) and synthesized in [[Zoom-Attendance-Segments-And-Journey]].
+Implemented — see [[Zoom-Attendance-Segments-And-Journey]], [[Zoom-Attendance-Implementation-Shipped]], migration **`024_zoom_attendance_segments_and_app_contacts.sql`**.
 
-- Add a dedicated **`zoom_attendance_segments`** table for join/leave facts and concurrency-style charts.
-- Keep **`journey_events`** as the **rollup** “attended this run” row for Show Up and collapsed journey UI.
-- **App-only contacts** when Zoom email does not match GHL (no outbound GHL create).
-
-When migrations land under `docs/database/migrations/`, update this page with concrete column names and FKs.
+- **`zoom_attendance_segments`** for join/leave facts and concurrency-style charts.
+- **`journey_events`** remains the **rollup** “attended this run” row for Show Up and collapsed journey UI.
+- **App-only contacts** on **`ghl_contacts`** when Zoom email does not match GHL mirror (`is_app_only`, `app_only_project_id`; ids `nmdapp-*`). GHL mirror upsert must not overwrite these rows.
 
 ## Ingest paths
 
@@ -59,5 +57,6 @@ When migrations land under `docs/database/migrations/`, update this page with co
 - [[Product-Phase-Roadmap]]
 - [[GHL-Webhook-Pipeline]]
 - [[Zoom]] · [[GoHighLevel]]
-- [[Zoom-Attendance-Segments-And-Journey]] (planned segment store + rollup)
-- `../docs/database/migrations/011_*.sql` (planned)
+- [[Zoom-Attendance-Segments-And-Journey]] (segment store + rollup)
+- `../docs/database/migrations/011_journey_events.sql` — base `journey_events` schema
+- `../docs/database/migrations/024_zoom_attendance_segments_and_app_contacts.sql` — segments + app-only columns
