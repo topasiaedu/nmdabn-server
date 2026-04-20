@@ -171,11 +171,26 @@ export type GhlWebhookHttpResult = {
 };
 
 /**
+ * Schedules a background task after the response is sent.
+ * On Vercel pass `after` from `next/server`; on other runtimes the default
+ * fires the work immediately (fire-and-forget, same as before).
+ */
+export type ScheduleBackgroundWork = (
+  work: () => void | Promise<void>
+) => void;
+
+const fireAndForget: ScheduleBackgroundWork = (work) => void work();
+
+/**
  * Core GHL marketplace webhook handler: raw UTF-8 body + header bag for signature verification.
+ *
+ * @param scheduleBackgroundWork — pass `after` from `next/server` on Vercel so background
+ *   sync tasks continue after the HTTP response is returned. Defaults to fire-and-forget.
  */
 export async function processGhlWebhookPost(
   rawUtf8: string,
-  headers: WebhookHeaderBag
+  headers: WebhookHeaderBag,
+  scheduleBackgroundWork: ScheduleBackgroundWork = fireAndForget
 ): Promise<GhlWebhookHttpResult> {
   const allowSkipVerify = ghlWebhookSkipVerifyAllowed();
 
@@ -262,7 +277,7 @@ export async function processGhlWebhookPost(
       return { status: 200, body: { success: true, ignored: true } };
     }
 
-    void (async () => {
+    scheduleBackgroundWork(async () => {
       try {
         const { error } = await supabase
           .from("ghl_contacts")
@@ -276,7 +291,7 @@ export async function processGhlWebhookPost(
       } catch (e) {
         console.error("GHL webhook delete error:", e);
       }
-    })();
+    });
 
     return {
       status: 200,
@@ -290,11 +305,14 @@ export async function processGhlWebhookPost(
       return { status: 200, body: { success: true, ignored: true } };
     }
 
-    void runGhlContactSyncForContactId(contactId, credentials)
-      .then(() => assignNextWebinarRunForContactId(contactId))
-      .catch((e) => {
+    scheduleBackgroundWork(async () => {
+      try {
+        await runGhlContactSyncForContactId(contactId, credentials);
+        await assignNextWebinarRunForContactId(contactId);
+      } catch (e) {
         console.error(`GHL webhook sync/assign failed for ${contactId}:`, e);
-      });
+      }
+    });
 
     return {
       status: 200,
@@ -307,8 +325,12 @@ export async function processGhlWebhookPost(
       console.warn(`GHL webhook ${eventType} without order id:`, webhookId);
       return { status: 200, body: { success: true, ignored: true } };
     }
-    void runGhlOrderSyncForOrderId(orderId, credentials).catch((e) => {
-      console.error(`GHL webhook order sync failed for ${orderId}:`, e);
+    scheduleBackgroundWork(async () => {
+      try {
+        await runGhlOrderSyncForOrderId(orderId, credentials);
+      } catch (e) {
+        console.error(`GHL webhook order sync failed for ${orderId}:`, e);
+      }
     });
     return {
       status: 200,
@@ -321,8 +343,12 @@ export async function processGhlWebhookPost(
       console.warn(`GHL webhook ${eventType} without invoice id:`, webhookId);
       return { status: 200, body: { success: true, ignored: true } };
     }
-    void runGhlInvoiceSyncForInvoiceId(invoiceId, credentials).catch((e) => {
-      console.error(`GHL webhook invoice sync failed for ${invoiceId}:`, e);
+    scheduleBackgroundWork(async () => {
+      try {
+        await runGhlInvoiceSyncForInvoiceId(invoiceId, credentials);
+      } catch (e) {
+        console.error(`GHL webhook invoice sync failed for ${invoiceId}:`, e);
+      }
     });
     return {
       status: 200,
