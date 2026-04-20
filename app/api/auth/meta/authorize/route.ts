@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 
 const FACEBOOK_OAUTH_DIALOG = "https://www.facebook.com/v21.0/dialog/oauth";
 
-const META_SCOPES = ["ads_read", "read_insights", "business_management"];
+const META_SCOPES = ["ads_read", "business_management"];
 
 /**
  * GET /api/auth/meta/authorize — builds Meta OAuth URL for connecting an ad account to a project agency line.
