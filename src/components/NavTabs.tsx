@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   BarChart2,
   ChevronDown,
+  Megaphone,
   Settings,
   ShoppingCart,
   TrendingUp,
@@ -30,6 +31,7 @@ const TABS: readonly TabDef[] = [
   { href: "/showup", label: "Show Up", icon: BarChart2 },
   { href: "/agency", label: "Agency", icon: TrendingUp },
   { href: "/buyer-behavior", label: "Buyer Behavior", icon: ShoppingCart },
+  { href: "/ads-manager", label: "Ads Manager", icon: Megaphone },
 ];
 
 function tabIsActive(href: string, pathname: string): boolean {

@@ -1,4 +1,4 @@
-﻿export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -1156,6 +1156,7 @@ export type Database = {
           id: string
           impressions: number | null
           integration_account_id: string
+          leads: number | null
           reach: number | null
           raw_json: Json | null
           spend: number | null
@@ -1172,6 +1173,7 @@ export type Database = {
           id?: string
           impressions?: number | null
           integration_account_id: string
+          leads?: number | null
           reach?: number | null
           raw_json?: Json | null
           spend?: number | null
@@ -1188,6 +1190,7 @@ export type Database = {
           id?: string
           impressions?: number | null
           integration_account_id?: string
+          leads?: number | null
           reach?: number | null
           raw_json?: Json | null
           spend?: number | null
@@ -1196,6 +1199,236 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "meta_insights_integration_account_id_fkey"
+            columns: ["integration_account_id"]
+            isOneToOne: false
+            referencedRelation: "integration_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_ad_insights: {
+        Row: {
+          ad_id: string
+          ad_name: string | null
+          adset_id: string
+          campaign_id: string
+          campaign_name: string | null
+          clicks: number | null
+          currency: string | null
+          date_start: string
+          date_stop: string
+          id: string
+          impressions: number | null
+          integration_account_id: string
+          leads: number | null
+          reach: number | null
+          raw_json: Json | null
+          spend: number | null
+          synced_at: string | null
+        }
+        Insert: {
+          ad_id: string
+          ad_name?: string | null
+          adset_id: string
+          campaign_id: string
+          campaign_name?: string | null
+          clicks?: number | null
+          currency?: string | null
+          date_start: string
+          date_stop: string
+          id?: string
+          impressions?: number | null
+          integration_account_id: string
+          leads?: number | null
+          reach?: number | null
+          raw_json?: Json | null
+          spend?: number | null
+          synced_at?: string | null
+        }
+        Update: {
+          ad_id?: string
+          ad_name?: string | null
+          adset_id?: string
+          campaign_id?: string
+          campaign_name?: string | null
+          clicks?: number | null
+          currency?: string | null
+          date_start?: string
+          date_stop?: string
+          id?: string
+          impressions?: number | null
+          integration_account_id?: string
+          leads?: number | null
+          reach?: number | null
+          raw_json?: Json | null
+          spend?: number | null
+          synced_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_ad_insights_integration_account_id_fkey"
+            columns: ["integration_account_id"]
+            isOneToOne: false
+            referencedRelation: "integration_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_ads: {
+        Row: {
+          adset_id: string
+          campaign_id: string
+          created_at: string
+          id: string
+          integration_account_id: string
+          name: string | null
+          raw_json: Json | null
+          status: string | null
+          synced_at: string | null
+        }
+        Insert: {
+          adset_id: string
+          campaign_id: string
+          created_at?: string
+          id: string
+          integration_account_id: string
+          name?: string | null
+          raw_json?: Json | null
+          status?: string | null
+          synced_at?: string | null
+        }
+        Update: {
+          adset_id?: string
+          campaign_id?: string
+          created_at?: string
+          id?: string
+          integration_account_id?: string
+          name?: string | null
+          raw_json?: Json | null
+          status?: string | null
+          synced_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_ads_integration_account_id_fkey"
+            columns: ["integration_account_id"]
+            isOneToOne: false
+            referencedRelation: "integration_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_adset_insights: {
+        Row: {
+          adset_id: string
+          adset_name: string | null
+          campaign_id: string
+          campaign_name: string | null
+          clicks: number | null
+          currency: string | null
+          date_start: string
+          date_stop: string
+          id: string
+          impressions: number | null
+          integration_account_id: string
+          leads: number | null
+          reach: number | null
+          raw_json: Json | null
+          spend: number | null
+          synced_at: string | null
+        }
+        Insert: {
+          adset_id: string
+          adset_name?: string | null
+          campaign_id: string
+          campaign_name?: string | null
+          clicks?: number | null
+          currency?: string | null
+          date_start: string
+          date_stop: string
+          id?: string
+          impressions?: number | null
+          integration_account_id: string
+          leads?: number | null
+          reach?: number | null
+          raw_json?: Json | null
+          spend?: number | null
+          synced_at?: string | null
+        }
+        Update: {
+          adset_id?: string
+          adset_name?: string | null
+          campaign_id?: string
+          campaign_name?: string | null
+          clicks?: number | null
+          currency?: string | null
+          date_start?: string
+          date_stop?: string
+          id?: string
+          impressions?: number | null
+          integration_account_id?: string
+          leads?: number | null
+          reach?: number | null
+          raw_json?: Json | null
+          spend?: number | null
+          synced_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_adset_insights_integration_account_id_fkey"
+            columns: ["integration_account_id"]
+            isOneToOne: false
+            referencedRelation: "integration_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_adsets: {
+        Row: {
+          billing_event: string | null
+          campaign_id: string
+          created_at: string
+          daily_budget: number | null
+          id: string
+          integration_account_id: string
+          lifetime_budget: number | null
+          name: string | null
+          optimization_goal: string | null
+          raw_json: Json | null
+          status: string | null
+          synced_at: string | null
+        }
+        Insert: {
+          billing_event?: string | null
+          campaign_id: string
+          created_at?: string
+          daily_budget?: number | null
+          id: string
+          integration_account_id: string
+          lifetime_budget?: number | null
+          name?: string | null
+          optimization_goal?: string | null
+          raw_json?: Json | null
+          status?: string | null
+          synced_at?: string | null
+        }
+        Update: {
+          billing_event?: string | null
+          campaign_id?: string
+          created_at?: string
+          daily_budget?: number | null
+          id?: string
+          integration_account_id?: string
+          lifetime_budget?: number | null
+          name?: string | null
+          optimization_goal?: string | null
+          raw_json?: Json | null
+          status?: string | null
+          synced_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_adsets_integration_account_id_fkey"
             columns: ["integration_account_id"]
             isOneToOne: false
             referencedRelation: "integration_accounts"
