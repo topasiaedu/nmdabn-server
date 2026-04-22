@@ -167,6 +167,8 @@ function ProjectSettingsContent(): React.ReactElement {
   const [metaSyncing, setMetaSyncing] = useState(false);
   const [metaSyncResult, setMetaSyncResult] = useState<string | null>(null);
   const [metaSyncError, setMetaSyncError] = useState<string | null>(null);
+  const [metaDisconnectingId, setMetaDisconnectingId] = useState<string | null>(null);
+  const [metaDisconnectError, setMetaDisconnectError] = useState<string | null>(null);
   const metaJustConnected = searchParams.get("meta_connected") === "1";
 
   const runsForProject = useMemo(
@@ -706,6 +708,46 @@ function ProjectSettingsContent(): React.ReactElement {
       setMetaConnectError("Network error starting Meta connection.");
     } finally {
       setMetaConnecting(false);
+    }
+  }
+
+  /** Removes a linked Meta ad account from this project. */
+  async function handleDisconnectMeta(connectionId: string): Promise<void> {
+    setMetaDisconnectingId(connectionId);
+    setMetaDisconnectError(null);
+    try {
+      const res = await fetch(
+        `/api/projects/${encodeURIComponent(projectId)}/connections/meta?connection_id=${encodeURIComponent(connectionId)}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "X-Workspace-Id": workspaceId,
+          },
+        }
+      );
+      const json: unknown = await res.json();
+      if (
+        typeof json === "object" &&
+        json !== null &&
+        "success" in json &&
+        (json as { success: unknown }).success === true
+      ) {
+        void loadAll();
+      } else {
+        const errMsg =
+          typeof json === "object" &&
+          json !== null &&
+          "error" in json &&
+          typeof (json as { error: string }).error === "string"
+            ? (json as { error: string }).error
+            : "Failed to disconnect account.";
+        setMetaDisconnectError(errMsg);
+      }
+    } catch {
+      setMetaDisconnectError("Network error disconnecting Meta account.");
+    } finally {
+      setMetaDisconnectingId(null);
     }
   }
 
@@ -1626,7 +1668,7 @@ function ProjectSettingsContent(): React.ReactElement {
                                 {" · "}Connected {new Date(conn.created_at).toLocaleDateString()}
                               </p>
                             </div>
-                            <div className="shrink-0">
+                            <div className="shrink-0 flex items-center gap-3">
                               {isExpired && (
                                 <span className="text-xs font-medium bg-red-100 text-red-700 px-2 py-0.5 rounded">
                                   Token expired
@@ -1637,11 +1679,31 @@ function ProjectSettingsContent(): React.ReactElement {
                                   Expires {expiresAt.toLocaleDateString()}
                                 </span>
                               )}
+                              <button
+                                type="button"
+                                disabled={metaDisconnectingId !== null}
+                                onClick={() => void handleDisconnectMeta(conn.id)}
+                                className="text-slate-400 hover:text-red-500 transition-colors p-1 disabled:opacity-40"
+                                title="Disconnect this Meta account"
+                              >
+                                {metaDisconnectingId === conn.id ? (
+                                  <Loader2 size={16} className="animate-spin" />
+                                ) : (
+                                  <Trash2 size={16} />
+                                )}
+                              </button>
                             </div>
                           </li>
                         );
                       })}
                     </ul>
+                  )}
+
+                  {metaDisconnectError !== null && (
+                    <div className="mt-2 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800 flex items-start gap-2">
+                      <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                      <span>{metaDisconnectError}</span>
+                    </div>
                   )}
 
                   {/* Sync */}
