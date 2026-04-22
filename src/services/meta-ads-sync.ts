@@ -82,36 +82,82 @@ function extractNextPageUrl(
 }
 
 /**
- * Parses lead count from a Meta Graph API `actions` array.
- *
- * Priority order to avoid double-counting:
- *  1. `omni_lead` — Meta's unified cross-channel lead metric (preferred)
- *  2. `lead`      — native lead forms + pixel leads combined
- *  3. `offsite_conversion.fb_pixel_lead` — pixel-only fallback
- *
- * Returns null when no lead action type is present (e.g. traffic campaigns).
+ * Finds the first matching `value` (count string) from a Meta Graph API
+ * `actions` or `action_values` array for the given priority list of action
+ * types.  Returns null when none of the types are present.
  */
-function parseLeadsFromActions(actions: unknown): number | null {
+function pickFirstActionValue(
+  actions: unknown,
+  priority: string[]
+): number | null {
   if (!Array.isArray(actions)) return null;
-
-  const LEAD_PRIORITY = [
-    "omni_lead",
-    "lead",
-    "offsite_conversion.fb_pixel_lead",
-  ];
-
-  for (const actionType of LEAD_PRIORITY) {
+  for (const actionType of priority) {
     for (const action of actions) {
-      if (
-        isRecord(action) &&
-        action["action_type"] === actionType
-      ) {
+      if (isRecord(action) && action["action_type"] === actionType) {
         const val = parseBigIntOrNull(action["value"]);
         if (val !== null) return val;
       }
     }
   }
   return null;
+}
+
+/**
+ * Finds the first matching monetary `value` from a Meta Graph API
+ * `action_values` array for the given priority list.  Returns null when absent.
+ */
+function pickFirstActionMoneyValue(
+  actionValues: unknown,
+  priority: string[]
+): number | null {
+  if (!Array.isArray(actionValues)) return null;
+  for (const actionType of priority) {
+    for (const av of actionValues) {
+      if (isRecord(av) && av["action_type"] === actionType) {
+        const val = parseMoney(av["value"]);
+        if (val !== null) return val;
+      }
+    }
+  }
+  return null;
+}
+
+/** Priority lists for each event type — avoids double-counting. */
+const ACTION_PRIORITY_LEADS = [
+  "omni_lead",
+  "lead",
+  "offsite_conversion.fb_pixel_lead",
+];
+const ACTION_PRIORITY_PURCHASES = [
+  "omni_purchase",
+  "purchase",
+  "offsite_conversion.fb_pixel_purchase",
+];
+
+interface ParsedActions {
+  leads: number | null;
+  purchases: number | null;
+  purchase_value: number | null;
+  landing_page_views: number | null;
+}
+
+/**
+ * Extracts tracked pixel event counts and purchase revenue from the Meta Graph
+ * API `actions` and `action_values` arrays on an insight row.
+ *
+ * Falls back to null for any individual event type that is not present so
+ * callers can distinguish "zero conversions reported" from "data not available".
+ */
+function parseActionsFromMeta(
+  actions: unknown,
+  actionValues: unknown
+): ParsedActions {
+  return {
+    leads: pickFirstActionValue(actions, ACTION_PRIORITY_LEADS),
+    purchases: pickFirstActionValue(actions, ACTION_PRIORITY_PURCHASES),
+    purchase_value: pickFirstActionMoneyValue(actionValues, ACTION_PRIORITY_PURCHASES),
+    landing_page_views: pickFirstActionValue(actions, ["landing_page_view"]),
+  };
 }
 
 /**
@@ -240,7 +286,7 @@ function buildInsightParams(
     "date_start",
     "date_stop",
     "account_currency",
-    ...(includeActions ? ["actions"] : []),
+    ...(includeActions ? ["actions", "action_values"] : []),
   ];
   const adFields = [
     ...adsetFields,
@@ -274,7 +320,7 @@ function campaignInsightFields(includeActions: boolean): string {
     "date_start",
     "date_stop",
     "account_currency",
-    ...(includeActions ? ["actions"] : []),
+    ...(includeActions ? ["actions", "action_values"] : []),
   ].join(",");
 }
 
@@ -303,7 +349,7 @@ async function fetchMetaInsights(
   } catch (err) {
     if (!isMetaPermissionError(err)) throw err;
     console.warn(
-      `[meta-ads-sync] campaign insights: actions field permission denied, retrying without actions. Error: ${err instanceof Error ? err.message : String(err)}`
+      `[meta-ads-sync] campaign insights: actions/action_values permission denied, retrying without. Error: ${err instanceof Error ? err.message : String(err)}`
     );
     return fetchAllGraphDataPages(accessToken, makeUrl(false));
   }
@@ -327,7 +373,7 @@ async function fetchMetaAdsetInsights(
   } catch (err) {
     if (!isMetaPermissionError(err)) throw err;
     console.warn(
-      `[meta-ads-sync] adset insights: actions field permission denied, retrying without actions. Error: ${err instanceof Error ? err.message : String(err)}`
+      `[meta-ads-sync] adset insights: actions/action_values permission denied, retrying without. Error: ${err instanceof Error ? err.message : String(err)}`
     );
     return fetchAllGraphDataPages(accessToken, makeUrl(false));
   }
@@ -351,7 +397,7 @@ async function fetchMetaAdInsights(
   } catch (err) {
     if (!isMetaPermissionError(err)) throw err;
     console.warn(
-      `[meta-ads-sync] ad insights: actions field permission denied, retrying without actions. Error: ${err instanceof Error ? err.message : String(err)}`
+      `[meta-ads-sync] ad insights: actions/action_values permission denied, retrying without. Error: ${err instanceof Error ? err.message : String(err)}`
     );
     return fetchAllGraphDataPages(accessToken, makeUrl(false));
   }
@@ -542,6 +588,7 @@ async function upsertMetaInsights(
         const dateStart = parseStringOrNull(row["date_start"])?.slice(0, 10) ?? "";
         const dateStop =
           parseStringOrNull(row["date_stop"])?.slice(0, 10) ?? dateStart;
+        const parsed = parseActionsFromMeta(row["actions"], row["action_values"]);
         return {
           integration_account_id: integrationAccountId,
           campaign_id: campaignId,
@@ -554,7 +601,10 @@ async function upsertMetaInsights(
           clicks: parseBigIntOrNull(row["clicks"]),
           reach: parseBigIntOrNull(row["reach"]),
           currency: parseStringOrNull(row["account_currency"]),
-          leads: parseLeadsFromActions(row["actions"]),
+          leads: parsed.leads,
+          purchases: parsed.purchases,
+          purchase_value: parsed.purchase_value,
+          landing_page_views: parsed.landing_page_views,
           raw_json: row as Json,
           synced_at: nowIso,
         };
@@ -595,6 +645,7 @@ async function upsertMetaAdsetInsights(
         const dateStart = parseStringOrNull(row["date_start"])?.slice(0, 10) ?? "";
         const dateStop =
           parseStringOrNull(row["date_stop"])?.slice(0, 10) ?? dateStart;
+        const parsed = parseActionsFromMeta(row["actions"], row["action_values"]);
         return {
           integration_account_id: integrationAccountId,
           adset_id: adsetId,
@@ -608,7 +659,10 @@ async function upsertMetaAdsetInsights(
           clicks: parseBigIntOrNull(row["clicks"]),
           reach: parseBigIntOrNull(row["reach"]),
           currency: parseStringOrNull(row["account_currency"]),
-          leads: parseLeadsFromActions(row["actions"]),
+          leads: parsed.leads,
+          purchases: parsed.purchases,
+          purchase_value: parsed.purchase_value,
+          landing_page_views: parsed.landing_page_views,
           raw_json: row as Json,
           synced_at: nowIso,
         };
@@ -650,6 +704,7 @@ async function upsertMetaAdInsights(
         const dateStart = parseStringOrNull(row["date_start"])?.slice(0, 10) ?? "";
         const dateStop =
           parseStringOrNull(row["date_stop"])?.slice(0, 10) ?? dateStart;
+        const parsed = parseActionsFromMeta(row["actions"], row["action_values"]);
         return {
           integration_account_id: integrationAccountId,
           ad_id: adId,
@@ -664,7 +719,10 @@ async function upsertMetaAdInsights(
           clicks: parseBigIntOrNull(row["clicks"]),
           reach: parseBigIntOrNull(row["reach"]),
           currency: parseStringOrNull(row["account_currency"]),
-          leads: parseLeadsFromActions(row["actions"]),
+          leads: parsed.leads,
+          purchases: parsed.purchases,
+          purchase_value: parsed.purchase_value,
+          landing_page_views: parsed.landing_page_views,
           raw_json: row as Json,
           synced_at: nowIso,
         };

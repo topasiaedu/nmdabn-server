@@ -1156,7 +1156,10 @@ export type Database = {
           id: string
           impressions: number | null
           integration_account_id: string
+          landing_page_views: number | null
           leads: number | null
+          purchases: number | null
+          purchase_value: number | null
           reach: number | null
           raw_json: Json | null
           spend: number | null
@@ -1173,7 +1176,10 @@ export type Database = {
           id?: string
           impressions?: number | null
           integration_account_id: string
+          landing_page_views?: number | null
           leads?: number | null
+          purchases?: number | null
+          purchase_value?: number | null
           reach?: number | null
           raw_json?: Json | null
           spend?: number | null
@@ -1190,7 +1196,10 @@ export type Database = {
           id?: string
           impressions?: number | null
           integration_account_id?: string
+          landing_page_views?: number | null
           leads?: number | null
+          purchases?: number | null
+          purchase_value?: number | null
           reach?: number | null
           raw_json?: Json | null
           spend?: number | null
@@ -1220,7 +1229,10 @@ export type Database = {
           id: string
           impressions: number | null
           integration_account_id: string
+          landing_page_views: number | null
           leads: number | null
+          purchases: number | null
+          purchase_value: number | null
           reach: number | null
           raw_json: Json | null
           spend: number | null
@@ -1239,7 +1251,10 @@ export type Database = {
           id?: string
           impressions?: number | null
           integration_account_id: string
+          landing_page_views?: number | null
           leads?: number | null
+          purchases?: number | null
+          purchase_value?: number | null
           reach?: number | null
           raw_json?: Json | null
           spend?: number | null
@@ -1258,7 +1273,10 @@ export type Database = {
           id?: string
           impressions?: number | null
           integration_account_id?: string
+          landing_page_views?: number | null
           leads?: number | null
+          purchases?: number | null
+          purchase_value?: number | null
           reach?: number | null
           raw_json?: Json | null
           spend?: number | null
@@ -1331,7 +1349,10 @@ export type Database = {
           id: string
           impressions: number | null
           integration_account_id: string
+          landing_page_views: number | null
           leads: number | null
+          purchases: number | null
+          purchase_value: number | null
           reach: number | null
           raw_json: Json | null
           spend: number | null
@@ -1349,7 +1370,10 @@ export type Database = {
           id?: string
           impressions?: number | null
           integration_account_id: string
+          landing_page_views?: number | null
           leads?: number | null
+          purchases?: number | null
+          purchase_value?: number | null
           reach?: number | null
           raw_json?: Json | null
           spend?: number | null
@@ -1367,7 +1391,10 @@ export type Database = {
           id?: string
           impressions?: number | null
           integration_account_id?: string
+          landing_page_views?: number | null
           leads?: number | null
+          purchases?: number | null
+          purchase_value?: number | null
           reach?: number | null
           raw_json?: Json | null
           spend?: number | null

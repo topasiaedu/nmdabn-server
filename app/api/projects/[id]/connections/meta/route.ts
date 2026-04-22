@@ -138,19 +138,6 @@ export async function DELETE(
       );
     }
 
-    /** Clean up the integration_accounts row if no other project links reference it. */
-    const { count } = await supabase
-      .from("project_meta_ad_accounts")
-      .select("id", { count: "exact", head: true })
-      .eq("integration_account_id", linkRow.integration_account_id);
-
-    if (count === 0) {
-      await supabase
-        .from("integration_accounts")
-        .delete()
-        .eq("id", linkRow.integration_account_id);
-    }
-
     return NextResponse.json({ success: true });
   } catch (e) {
     console.error("DELETE /api/projects/[id]/connections/meta unexpected:", e);

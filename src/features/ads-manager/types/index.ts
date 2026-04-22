@@ -51,6 +51,14 @@ export interface AdsManagerRow {
   leads: number | null;
   /** Cost per lead (spend / leads), or null when no leads. */
   cost_per_lead: number | null;
+  /** Total purchase conversion events attributed via Meta pixel, or null if none. */
+  purchases: number | null;
+  /** Total purchase revenue attributed via Meta pixel (from action_values), or null. */
+  purchase_value: number | null;
+  /** Return on ad spend (purchase_value / spend), or null when no purchase value. */
+  roas: number | null;
+  /** Total landing page view events, or null if not tracked. */
+  landing_page_views: number | null;
 }
 
 /** Rolled-up totals shown in the KPI bar above the table. */
@@ -61,6 +69,14 @@ export interface AdsManagerSummary {
   total_reach: number;
   /** Total leads across all rows, or null when no pixel/lead events present. */
   total_leads: number | null;
+  /** Total purchase conversions, or null. */
+  total_purchases: number | null;
+  /** Total purchase revenue, or null. */
+  total_purchase_value: number | null;
+  /** Overall ROAS (total_purchase_value / total_spend), or null. */
+  roas: number | null;
+  /** Total landing page views, or null. */
+  total_landing_page_views: number | null;
   currency: string;
   ctr: number | null;
   cpm: number | null;

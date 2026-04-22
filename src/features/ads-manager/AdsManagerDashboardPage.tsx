@@ -23,6 +23,7 @@ import {
   MousePointerClick,
   RefreshCw,
   Settings,
+  ShoppingCart,
   Target,
   TrendingUp,
   Users,
@@ -454,7 +455,7 @@ type SummaryBarProps = Readonly<{
 function SummaryBar({ summary }: SummaryBarProps): React.ReactElement {
   const currency = summary.currency;
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4">
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 xl:grid-cols-11 gap-4">
       <KpiCard
         title="Spend"
         value={formatMoney(summary.total_spend, currency)}
@@ -488,16 +489,33 @@ function SummaryBar({ summary }: SummaryBarProps): React.ReactElement {
         icon={<DollarSign size={20} />}
       />
       <KpiCard
+        title="Purchases"
+        value={summary.total_purchases === null ? "—" : formatNumber(summary.total_purchases)}
+        icon={<ShoppingCart size={20} />}
+      />
+      <KpiCard
+        title="Revenue"
+        value={summary.total_purchase_value === null ? "—" : formatMoney(summary.total_purchase_value, currency)}
+        icon={<DollarSign size={20} />}
+      />
+      <KpiCard
+        title="ROAS"
+        value={summary.roas === null ? "—" : `${summary.roas.toFixed(2)}x`}
+        icon={<TrendingUp size={20} />}
+        badge={summary.roas !== null && summary.roas >= 2 ? "Good" : undefined}
+        badgeColor="green"
+      />
+      <KpiCard
+        title="LPV"
+        value={summary.total_landing_page_views === null ? "—" : formatNumber(summary.total_landing_page_views)}
+        icon={<MousePointerClick size={20} />}
+      />
+      <KpiCard
         title="CTR"
         value={formatPct(summary.ctr)}
         icon={<TrendingUp size={20} />}
         badge={summary.ctr !== null && summary.ctr >= 2 ? "Good" : undefined}
         badgeColor="green"
-      />
-      <KpiCard
-        title="CPM"
-        value={summary.cpm === null ? "—" : formatMoney(summary.cpm, currency)}
-        icon={<DollarSign size={20} />}
       />
     </div>
   );
@@ -585,6 +603,10 @@ type SortKey =
   | "reach"
   | "leads"
   | "cost_per_lead"
+  | "purchases"
+  | "purchase_value"
+  | "roas"
+  | "landing_page_views"
   | "ctr"
   | "cpm"
   | "cpc";
@@ -680,6 +702,10 @@ function EntityTable({
               {columnHeader("Reach", "reach", sortKey, sortDir, handleSort)}
               {columnHeader("Leads", "leads", sortKey, sortDir, handleSort)}
               {columnHeader("CPL", "cost_per_lead", sortKey, sortDir, handleSort)}
+              {columnHeader("Purchases", "purchases", sortKey, sortDir, handleSort)}
+              {columnHeader("Revenue", "purchase_value", sortKey, sortDir, handleSort)}
+              {columnHeader("ROAS", "roas", sortKey, sortDir, handleSort)}
+              {columnHeader("LPV", "landing_page_views", sortKey, sortDir, handleSort)}
               {columnHeader("CTR", "ctr", sortKey, sortDir, handleSort)}
               {columnHeader("CPM", "cpm", sortKey, sortDir, handleSort)}
               {columnHeader("CPC", "cpc", sortKey, sortDir, handleSort)}
@@ -746,6 +772,38 @@ function EntityTable({
                       {formatMoney(row.cost_per_lead, currency)}
                     </span>
                   )}
+                </td>
+                <td className="px-4 py-3 text-right whitespace-nowrap">
+                  {row.purchases === null ? (
+                    <span className="text-slate-400">—</span>
+                  ) : (
+                    <span className="font-medium text-indigo-700">
+                      {formatNumber(row.purchases)}
+                    </span>
+                  )}
+                </td>
+                <td className="px-4 py-3 text-right whitespace-nowrap">
+                  {row.purchase_value === null ? (
+                    <span className="text-slate-400">—</span>
+                  ) : (
+                    <span className="font-medium text-emerald-700">
+                      {formatMoney(row.purchase_value, currency)}
+                    </span>
+                  )}
+                </td>
+                <td className="px-4 py-3 text-right whitespace-nowrap">
+                  {row.roas === null ? (
+                    <span className="text-slate-400">—</span>
+                  ) : (
+                    <span className={`font-medium ${row.roas >= 2 ? "text-emerald-700" : "text-amber-600"}`}>
+                      {`${row.roas.toFixed(2)}x`}
+                    </span>
+                  )}
+                </td>
+                <td className="px-4 py-3 text-right text-slate-700 whitespace-nowrap">
+                  {row.landing_page_views === null ? (
+                    <span className="text-slate-400">—</span>
+                  ) : formatNumber(row.landing_page_views)}
                 </td>
                 <td className="px-4 py-3 text-right text-slate-700 whitespace-nowrap">
                   {formatPct(row.ctr)}

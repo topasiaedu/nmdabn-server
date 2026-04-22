@@ -1,3 +1,15 @@
+/**
+ * Imports opt-in rows from a parsed CSV sheet into GHL + journey_events.
+ *
+ * Performance design:
+ *   - Meta adsets + ads are pre-loaded ONCE before the loop (no DB per row).
+ *   - Rows are processed in a concurrency pool (IMPORT_CONCURRENCY = 6) so
+ *     GHL API calls for different contacts happen in parallel, cutting total
+ *     wall-clock time by ~5–6×.
+ *   - GHL's rate limit is ~100 req/s per integration token; 6 concurrent rows
+ *     × 3 GHL calls each = ≤18 in-flight requests — well within limits.
+ */
+
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/database.types";
@@ -13,6 +25,14 @@ import {
 } from "@/services/ghl-contacts-http";
 import type { GhlWebhookCredentials } from "@/services/ghl-connection-resolve";
 import { mirrorGhlContactFromApiDetail } from "@/services/ghl-contact-mirror-upsert";
+import {
+  preloadMetaEntitiesForProject,
+  resolveMetaAttributionInMemory,
+  type PreloadedMetaEntities,
+} from "@/services/optin-meta-attribution";
+
+/** Max concurrent rows processed simultaneously. */
+const IMPORT_CONCURRENCY = 6;
 
 export type OptinImportResult = {
   imported: number;
@@ -85,8 +105,168 @@ async function journeyDuplicateExists(
   return data !== null;
 }
 
+// ---------------------------------------------------------------------------
+// Per-row processing (called in parallel by the concurrency pool)
+// ---------------------------------------------------------------------------
+
+type RowOutcome =
+  | { status: "imported" }
+  | { status: "skipped_duplicate" }
+  | { status: "skipped_invalid"; message: string }
+  | { status: "error"; message: string };
+
+async function processOneRow(args: {
+  supabase: SupabaseClient<Database>;
+  row: ParsedLeadSheetRow;
+  projectId: string;
+  locationId: string;
+  agencyLine: string;
+  tagsForAgency: string[];
+  creds: GhlWebhookCredentials;
+  metaEntities: PreloadedMetaEntities;
+}): Promise<RowOutcome> {
+  const {
+    supabase,
+    row,
+    projectId,
+    locationId,
+    agencyLine,
+    tagsForAgency,
+    creds,
+    metaEntities,
+  } = args;
+
+  const emailNorm = row.email.trim().toLowerCase();
+
+  const occurredAt = parseKualaLumpurSheetDateTime(row.dateTimeRaw);
+  if (occurredAt === null) {
+    return {
+      status: "skipped_invalid",
+      message: `Invalid date/time: "${row.dateTimeRaw}" (expected D/M/YYYY H:mm in KL time)`,
+    };
+  }
+
+  const importRowHash = buildImportRowHash({
+    email: emailNorm,
+    occurredAtIso: occurredAt,
+    utmSource: row.utmSource,
+    utmMedium: row.utmMedium,
+    utmCampaign: row.utmCampaign,
+    utmContent: row.utmContent,
+    agencyLine,
+  });
+
+  const dup = await journeyDuplicateExists(supabase, projectId, importRowHash);
+  if (dup) return { status: "skipped_duplicate" };
+
+  const { firstName, lastName } = splitFullName(row.fullName);
+
+  let contactId = await ghlSearchContactByEmail(creds, emailNorm);
+
+  if (contactId === null) {
+    try {
+      contactId = await ghlCreateContact(creds, {
+        email: emailNorm,
+        firstName,
+        lastName,
+        phone: row.phone,
+        tags: [...tagsForAgency],
+      });
+    } catch (createErr) {
+      const recovered =
+        extractDuplicateContactIdFromGhlCreateError(createErr);
+      if (recovered === null) {
+        throw createErr;
+      }
+      contactId = recovered;
+      await ghlMergeContactTags(creds, contactId, tagsForAgency);
+    }
+  } else {
+    await ghlMergeContactTags(creds, contactId, tagsForAgency);
+  }
+
+  const detail = await ghlGetContactDetail(creds, contactId);
+  await mirrorGhlContactFromApiDetail(supabase, detail, locationId);
+
+  const metaAttribution = resolveMetaAttributionInMemory(metaEntities, {
+    utmSource: row.utmSource,
+    utmContent: row.utmContent,
+    utmCampaign: row.utmCampaign,
+  });
+
+  const payload: Json = {
+    utm_source: row.utmSource.trim() || null,
+    utm_medium: row.utmMedium.trim() || null,
+    utm_campaign: row.utmCampaign.trim() || null,
+    utm_content: row.utmContent.trim() || null,
+    import_source: "google_sheet_csv",
+    agency_line: agencyLine,
+    import_row_hash: importRowHash,
+    sheet_full_name: row.fullName.trim(),
+    sheet_phone: row.phone.trim(),
+  };
+
+  const { error: insErr } = await supabase.from("journey_events").insert({
+    occurred_at: occurredAt,
+    event_type: "optin",
+    source_system: "manual",
+    contact_id: contactId,
+    location_id: locationId,
+    project_id: projectId,
+    webinar_run_id: null,
+    duration_seconds: null,
+    payload,
+    meta_adset_id: metaAttribution.meta_adset_id,
+    meta_campaign_id: metaAttribution.meta_campaign_id,
+    meta_ad_id: metaAttribution.meta_ad_id,
+    meta_attribution_method: metaAttribution.method,
+  });
+
+  if (insErr !== null) {
+    return { status: "error", message: insErr.message };
+  }
+
+  return { status: "imported" };
+}
+
+// ---------------------------------------------------------------------------
+// Concurrency pool helper
+// ---------------------------------------------------------------------------
+
 /**
- * Imports parsed sheet rows: GHL find/create + agency tags + mirror sync + journey_events optin row.
+ * Runs `tasks` with at most `concurrency` running at any instant.
+ * Results are returned in the same order as input tasks.
+ */
+async function runWithConcurrency<T>(
+  tasks: Array<() => Promise<T>>,
+  concurrency: number
+): Promise<T[]> {
+  const results: T[] = new Array(tasks.length) as T[];
+  let nextIndex = 0;
+
+  async function worker(): Promise<void> {
+    while (nextIndex < tasks.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await tasks[index]();
+    }
+  }
+
+  const poolSize = Math.min(concurrency, tasks.length);
+  await Promise.all(Array.from({ length: poolSize }, worker));
+  return results;
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/**
+ * Imports parsed sheet rows: GHL find/create + agency tags + mirror sync +
+ * journey_events optin row. Also resolves Meta adset/ad IDs from UTMs.
+ *
+ * Rows are processed in parallel (IMPORT_CONCURRENCY = 6) to reduce
+ * wall-clock time from ~O(n × GHL latency) to ~O(n/6 × GHL latency).
  */
 export async function importOptinRowsFromSheet(args: {
   supabase: SupabaseClient<Database>;
@@ -98,7 +278,6 @@ export async function importOptinRowsFromSheet(args: {
   rows: ParsedLeadSheetRow[];
   /** 1-based Excel row numbers for error reporting (header = row 1). */
   rowNumberOffset: number;
-  /** Called when the status line for the current row changes (GHL + sync can take several seconds). */
   onProgress?: (p: OptinImportProgress) => void;
 }): Promise<OptinImportResult> {
   const tagsForAgency = getTagsForLine(args.agencyLine, args.agencyLineTags);
@@ -108,24 +287,32 @@ export async function importOptinRowsFromSheet(args: {
     );
   }
 
-  const result: OptinImportResult = {
-    imported: 0,
-    skippedDuplicates: 0,
-    skippedInvalid: 0,
-    errors: [],
-  };
-
   const totalRows = args.rows.length;
+
   args.onProgress?.({
     total: totalRows,
     current: 0,
     sheetRowNumber: 0,
     email: "",
-    message: `Starting import — ${totalRows} data row(s)`,
+    message: `Loading Meta ad data…`,
   });
 
-  for (let i = 0; i < args.rows.length; i += 1) {
-    const row = args.rows[i];
+  // Pre-load all Meta adsets + ads ONCE — zero DB per row for attribution.
+  const metaEntities = await preloadMetaEntitiesForProject(
+    args.supabase,
+    args.projectId
+  );
+
+  args.onProgress?.({
+    total: totalRows,
+    current: 0,
+    sheetRowNumber: 0,
+    email: "",
+    message: `Starting import — ${totalRows} row(s) with concurrency ${IMPORT_CONCURRENCY}`,
+  });
+
+  // Build a task per row, then run them through the concurrency pool.
+  const tasks = args.rows.map((row, i) => async (): Promise<RowOutcome> => {
     const rowNumber = args.rowNumberOffset + i + 2;
     const emailNorm = row.email.trim().toLowerCase();
 
@@ -134,167 +321,39 @@ export async function importOptinRowsFromSheet(args: {
       current: i + 1,
       sheetRowNumber: rowNumber,
       email: emailNorm,
-      message: `Row ${i + 1}/${totalRows} (sheet #${rowNumber}) — validating…`,
+      message: `Processing…`,
     });
-
-    const occurredAt = parseKualaLumpurSheetDateTime(row.dateTimeRaw);
-    if (occurredAt === null) {
-      result.skippedInvalid += 1;
-      result.errors.push({
-        rowNumber,
-        message: `Invalid date/time: "${row.dateTimeRaw}" (expected D/M/YYYY H:mm in KL time)`,
-      });
-      args.onProgress?.({
-        total: totalRows,
-        current: i + 1,
-        sheetRowNumber: rowNumber,
-        email: emailNorm,
-        message: `Skipped — invalid date/time`,
-      });
-      continue;
-    }
-
-    const importRowHash = buildImportRowHash({
-      email: emailNorm,
-      occurredAtIso: occurredAt,
-      utmSource: row.utmSource,
-      utmMedium: row.utmMedium,
-      utmCampaign: row.utmCampaign,
-      utmContent: row.utmContent,
-      agencyLine: args.agencyLine,
-    });
-
-    const dup = await journeyDuplicateExists(
-      args.supabase,
-      args.projectId,
-      importRowHash
-    );
-    if (dup) {
-      result.skippedDuplicates += 1;
-      args.onProgress?.({
-        total: totalRows,
-        current: i + 1,
-        sheetRowNumber: rowNumber,
-        email: emailNorm,
-        message: `Skipped — identical journey row already exists`,
-      });
-      continue;
-    }
 
     try {
-      args.onProgress?.({
-        total: totalRows,
-        current: i + 1,
-        sheetRowNumber: rowNumber,
-        email: emailNorm,
-        message: `GoHighLevel — looking up or creating contact…`,
+      const outcome = await processOneRow({
+        supabase: args.supabase,
+        row,
+        projectId: args.projectId,
+        locationId: args.locationId,
+        agencyLine: args.agencyLine,
+        tagsForAgency,
+        creds: args.creds,
+        metaEntities,
       });
 
-      let contactId = await ghlSearchContactByEmail(args.creds, emailNorm);
-      const { firstName, lastName } = splitFullName(row.fullName);
-
-      if (contactId === null) {
-        try {
-          contactId = await ghlCreateContact(args.creds, {
-            email: emailNorm,
-            firstName,
-            lastName,
-            phone: row.phone,
-            tags: [...tagsForAgency],
-          });
-        } catch (createErr) {
-          /**
-           * Search-by-email can miss a contact that GHL still treats as duplicate
-           * by phone. GHL returns 400 with `meta.contactId` — use that id and
-           * merge tags (create never applied them).
-           */
-          const recovered =
-            extractDuplicateContactIdFromGhlCreateError(createErr);
-          if (recovered === null) {
-            throw createErr;
-          }
-          contactId = recovered;
-          await ghlMergeContactTags(args.creds, contactId, tagsForAgency);
-        }
-      } else {
-        await ghlMergeContactTags(args.creds, contactId, tagsForAgency);
-      }
-
-      args.onProgress?.({
-        total: totalRows,
-        current: i + 1,
-        sheetRowNumber: rowNumber,
-        email: emailNorm,
-        message: `Syncing contact mirror (in-process, one GHL fetch)…`,
-      });
-
-      const detail = await ghlGetContactDetail(args.creds, contactId);
-      await mirrorGhlContactFromApiDetail(
-        args.supabase,
-        detail,
-        args.locationId
-      );
-
-      args.onProgress?.({
-        total: totalRows,
-        current: i + 1,
-        sheetRowNumber: rowNumber,
-        email: emailNorm,
-        message: `Saving journey opt-in event…`,
-      });
-
-      const payload: Json = {
-        utm_source: row.utmSource.trim() === "" ? null : row.utmSource.trim(),
-        utm_medium: row.utmMedium.trim() === "" ? null : row.utmMedium.trim(),
-        utm_campaign:
-          row.utmCampaign.trim() === "" ? null : row.utmCampaign.trim(),
-        utm_content:
-          row.utmContent.trim() === "" ? null : row.utmContent.trim(),
-        import_source: "google_sheet_csv",
-        agency_line: args.agencyLine,
-        import_row_hash: importRowHash,
-        sheet_full_name: row.fullName.trim(),
-        sheet_phone: row.phone.trim(),
+      const statusLabel: Record<RowOutcome["status"], string> = {
+        imported: "Done — imported",
+        skipped_duplicate: "Skipped — duplicate",
+        skipped_invalid: `Skipped — ${outcome.status === "skipped_invalid" ? outcome.message : ""}`,
+        error: `Failed — ${outcome.status === "error" ? outcome.message : ""}`,
       };
 
-      const { error: insErr } = await args.supabase.from("journey_events").insert({
-        occurred_at: occurredAt,
-        event_type: "optin",
-        source_system: "manual",
-        contact_id: contactId,
-        location_id: args.locationId,
-        project_id: args.projectId,
-        webinar_run_id: null,
-        duration_seconds: null,
-        payload,
-      });
-
-      if (insErr !== null) {
-        result.errors.push({
-          rowNumber,
-          message: insErr.message,
-        });
-        args.onProgress?.({
-          total: totalRows,
-          current: i + 1,
-          sheetRowNumber: rowNumber,
-          email: emailNorm,
-          message: `Failed — ${insErr.message}`,
-        });
-        continue;
-      }
-
-      result.imported += 1;
       args.onProgress?.({
         total: totalRows,
         current: i + 1,
         sheetRowNumber: rowNumber,
         email: emailNorm,
-        message: `Done — imported`,
+        message: statusLabel[outcome.status],
       });
+
+      return outcome;
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Import failed";
-      result.errors.push({ rowNumber, message: msg });
       args.onProgress?.({
         total: totalRows,
         current: i + 1,
@@ -302,6 +361,32 @@ export async function importOptinRowsFromSheet(args: {
         email: emailNorm,
         message: `Failed — ${msg}`,
       });
+      return { status: "error", message: msg };
+    }
+  });
+
+  const outcomes = await runWithConcurrency(tasks, IMPORT_CONCURRENCY);
+
+  const result: OptinImportResult = {
+    imported: 0,
+    skippedDuplicates: 0,
+    skippedInvalid: 0,
+    errors: [],
+  };
+
+  for (let i = 0; i < outcomes.length; i += 1) {
+    const outcome = outcomes[i];
+    const rowNumber = args.rowNumberOffset + i + 2;
+
+    if (outcome.status === "imported") {
+      result.imported += 1;
+    } else if (outcome.status === "skipped_duplicate") {
+      result.skippedDuplicates += 1;
+    } else if (outcome.status === "skipped_invalid") {
+      result.skippedInvalid += 1;
+      result.errors.push({ rowNumber, message: outcome.message });
+    } else {
+      result.errors.push({ rowNumber, message: outcome.message });
     }
   }
 

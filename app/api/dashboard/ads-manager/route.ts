@@ -64,11 +64,15 @@ function emptyPayload(
       total_clicks: 0,
       total_reach: 0,
       total_leads: null,
-      cost_per_lead: null,
+      total_purchases: null,
+      total_purchase_value: null,
+      roas: null,
+      total_landing_page_views: null,
       currency: "USD",
       ctr: null,
       cpm: null,
       cpc: null,
+      cost_per_lead: null,
     },
     rows: [],
     date_from: dateFrom,
@@ -92,6 +96,9 @@ type RawInsightRow = {
   clicks: number | null;
   reach: number | null;
   leads: number | null;
+  purchases: number | null;
+  purchase_value: number | null;
+  landing_page_views: number | null;
   currency: string | null;
 };
 
@@ -101,6 +108,9 @@ type EntityAccum = {
   clicks: number;
   reach: number;
   leads: number;
+  purchases: number;
+  purchase_value: number;
+  landing_page_views: number;
   currency: string;
   name: string;
   parentId: string | null;
@@ -114,40 +124,69 @@ type EntityAccum = {
  * Aggregates an array of raw insight rows into a per-entity accumulator map.
  * Also derives the dominant non-USD currency seen across all rows.
  */
+/** Creates an initial EntityAccum from the first raw insight row seen for an entity. */
+function createAccum(row: RawInsightRow): EntityAccum {
+  return {
+    spend: Number(row.spend ?? 0),
+    impressions: Number(row.impressions ?? 0),
+    clicks: Number(row.clicks ?? 0),
+    reach: Number(row.reach ?? 0),
+    leads: Number(row.leads ?? 0),
+    purchases: Number(row.purchases ?? 0),
+    purchase_value: Number(row.purchase_value ?? 0),
+    landing_page_views: Number(row.landing_page_views ?? 0),
+    currency: row.currency ?? "USD",
+    name: row.entity_name ?? row.entity_id,
+    parentId: row.parent_id,
+  };
+}
+
+/** Adds a raw insight row's values into an existing EntityAccum. */
+function mergeIntoAccum(accum: EntityAccum, row: RawInsightRow): void {
+  accum.spend += Number(row.spend ?? 0);
+  accum.impressions += Number(row.impressions ?? 0);
+  accum.clicks += Number(row.clicks ?? 0);
+  accum.reach += Number(row.reach ?? 0);
+  accum.leads += Number(row.leads ?? 0);
+  accum.purchases += Number(row.purchases ?? 0);
+  accum.purchase_value += Number(row.purchase_value ?? 0);
+  accum.landing_page_views += Number(row.landing_page_views ?? 0);
+  if ((row.currency ?? "USD") !== "USD") {
+    accum.currency = row.currency ?? "USD";
+  }
+}
+
+/**
+ * Aggregates an array of raw insight rows into a per-entity accumulator map.
+ * Also derives the dominant non-USD currency seen across all rows.
+ *
+ * @param journeyLeads - First-party lead counts from journey_events, keyed by
+ *   entity_id. When present for an entity, this replaces Meta pixel leads.
+ */
 function aggregateRows(
-  rows: RawInsightRow[]
+  rows: RawInsightRow[],
+  journeyLeads: Map<string, number>
 ): { accum: Map<string, EntityAccum>; currency: string } {
   const accum = new Map<string, EntityAccum>();
   let currency = "USD";
 
   for (const row of rows) {
-    const rowSpend = Number(row.spend ?? 0);
-    const rowImpressions = Number(row.impressions ?? 0);
-    const rowClicks = Number(row.clicks ?? 0);
-    const rowReach = Number(row.reach ?? 0);
-    const rowCurrency = row.currency ?? "USD";
-
-    if (rowCurrency !== "USD") currency = rowCurrency;
-
+    if ((row.currency ?? "USD") !== "USD") {
+      currency = row.currency ?? "USD";
+    }
     const existing = accum.get(row.entity_id);
     if (existing === undefined) {
-      accum.set(row.entity_id, {
-        spend: rowSpend,
-        impressions: rowImpressions,
-        clicks: rowClicks,
-        reach: rowReach,
-        leads: Number(row.leads ?? 0),
-        currency: rowCurrency,
-        name: row.entity_name ?? row.entity_id,
-        parentId: row.parent_id,
-      });
+      accum.set(row.entity_id, createAccum(row));
     } else {
-      existing.spend += rowSpend;
-      existing.impressions += rowImpressions;
-      existing.clicks += rowClicks;
-      existing.reach += rowReach;
-      existing.leads += Number(row.leads ?? 0);
-      if (rowCurrency !== "USD") existing.currency = rowCurrency;
+      mergeIntoAccum(existing, row);
+    }
+  }
+
+  // Overlay first-party journey lead counts (override Meta pixel).
+  for (const [entityId, count] of journeyLeads) {
+    const entry = accum.get(entityId);
+    if (entry !== undefined) {
+      entry.leads = count;
     }
   }
 
@@ -160,6 +199,43 @@ type EntityMeta = {
   label: string | null;
 };
 
+/** Converts a positive count to itself, or null when zero (avoids "0 leads" confusion). */
+function positiveOrNull(n: number): number | null {
+  return n > 0 ? n : null;
+}
+
+/** Maps an EntityAccum entry to an AdsManagerRow with all derived metrics. */
+function accumToRow(
+  entityId: string,
+  acc: EntityAccum,
+  meta: EntityMeta | undefined
+): AdsManagerRow {
+  const ctr = acc.impressions > 0 ? (acc.clicks / acc.impressions) * 100 : null;
+  const cpm = acc.impressions > 0 ? (acc.spend / acc.impressions) * 1000 : null;
+  const cpc = acc.clicks > 0 ? acc.spend / acc.clicks : null;
+  return {
+    entity_id: entityId,
+    entity_name: meta?.name ?? acc.name,
+    entity_status: meta?.status ?? null,
+    entity_label: meta?.label ?? null,
+    parent_id: acc.parentId,
+    spend: acc.spend,
+    impressions: acc.impressions,
+    clicks: acc.clicks,
+    reach: acc.reach,
+    leads: positiveOrNull(acc.leads),
+    currency: acc.currency,
+    ctr,
+    cpm,
+    cpc,
+    cost_per_lead: acc.leads > 0 ? acc.spend / acc.leads : null,
+    purchases: positiveOrNull(acc.purchases),
+    purchase_value: positiveOrNull(acc.purchase_value),
+    roas: acc.purchase_value > 0 ? acc.purchase_value / acc.spend : null,
+    landing_page_views: positiveOrNull(acc.landing_page_views),
+  };
+}
+
 /**
  * Converts the accumulator map into a sorted {@link AdsManagerRow} array.
  * Rows are sorted by spend descending.
@@ -169,47 +245,35 @@ function buildRows(
   metaMap: Map<string, EntityMeta>
 ): AdsManagerRow[] {
   const rows: AdsManagerRow[] = [];
-
   for (const [entityId, acc] of accum) {
-    const meta = metaMap.get(entityId);
-    const ctr =
-      acc.impressions > 0 ? (acc.clicks / acc.impressions) * 100 : null;
-    const cpm =
-      acc.impressions > 0 ? (acc.spend / acc.impressions) * 1000 : null;
-    const cpc = acc.clicks > 0 ? acc.spend / acc.clicks : null;
-
-    rows.push({
-      entity_id: entityId,
-      entity_name: meta?.name ?? acc.name,
-      entity_status: meta?.status ?? null,
-      entity_label: meta?.label ?? null,
-      parent_id: acc.parentId,
-      spend: acc.spend,
-      impressions: acc.impressions,
-      clicks: acc.clicks,
-      reach: acc.reach,
-      leads: acc.leads > 0 ? acc.leads : null,
-      currency: acc.currency,
-      ctr,
-      cpm,
-      cpc,
-      cost_per_lead: acc.leads > 0 ? acc.spend / acc.leads : null,
-    });
+    rows.push(accumToRow(entityId, acc, metaMap.get(entityId)));
   }
-
   rows.sort((a, b) => b.spend - a.spend);
   return rows;
 }
 
 /**
  * Computes a rolled-up {@link AdsManagerSummary} from entity rows.
+ *
+ * @param journeyLeadsTotal - When > 0, used as total_leads and for CPL so that
+ *   unattributed journey opt-ins (organic / missing UTM) are reflected in the
+ *   summary KPI bar. Per-row leads stay attributed-only.
  */
-function buildSummary(rows: AdsManagerRow[], currency: string): AdsManagerSummary {
+function buildSummary(
+  rows: AdsManagerRow[],
+  currency: string,
+  journeyLeadsTotal: number
+): AdsManagerSummary {
   const totalSpend = rows.reduce((s, r) => s + r.spend, 0);
   const totalImpressions = rows.reduce((s, r) => s + r.impressions, 0);
   const totalClicks = rows.reduce((s, r) => s + r.clicks, 0);
   const totalReach = rows.reduce((s, r) => s + r.reach, 0);
-  const totalLeads = rows.reduce((s, r) => s + (r.leads ?? 0), 0);
+  const totalLeads = journeyLeadsTotal > 0
+    ? journeyLeadsTotal
+    : rows.reduce((s, r) => s + (r.leads ?? 0), 0);
+  const totalPurchases = rows.reduce((s, r) => s + (r.purchases ?? 0), 0);
+  const totalPurchaseValue = rows.reduce((s, r) => s + (r.purchase_value ?? 0), 0);
+  const totalLandingPageViews = rows.reduce((s, r) => s + (r.landing_page_views ?? 0), 0);
 
   return {
     total_spend: totalSpend,
@@ -217,6 +281,10 @@ function buildSummary(rows: AdsManagerRow[], currency: string): AdsManagerSummar
     total_clicks: totalClicks,
     total_reach: totalReach,
     total_leads: totalLeads > 0 ? totalLeads : null,
+    total_purchases: totalPurchases > 0 ? totalPurchases : null,
+    total_purchase_value: totalPurchaseValue > 0 ? totalPurchaseValue : null,
+    roas: totalPurchaseValue > 0 ? totalPurchaseValue / totalSpend : null,
+    total_landing_page_views: totalLandingPageViews > 0 ? totalLandingPageViews : null,
     currency,
     ctr:
       totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : null,
@@ -228,8 +296,83 @@ function buildSummary(rows: AdsManagerRow[], currency: string): AdsManagerSummar
 }
 
 // ---------------------------------------------------------------------------
-// Level-specific query functions
+// Journey-events lead counts (first-party, overrides Meta pixel leads)
 // ---------------------------------------------------------------------------
+
+/**
+ * Returns per-entity lead counts from first-party journey_events, plus a total
+ * that includes unattributed rows (empty UTM / organic).
+ *
+ * Date filtering uses KL timezone (UTC+8) to match the Google Sheet convention —
+ * "April 21" means April 21 00:00 – 23:59 in Asia/Kuala_Lumpur, not UTC.
+ *
+ * @param level           - Groups by meta_campaign_id | meta_adset_id | meta_ad_id.
+ * @param projectId       - Scope to this project.
+ * @param dateFrom        - Inclusive start date (YYYY-MM-DD) in KL timezone.
+ * @param dateTo          - Inclusive end date   (YYYY-MM-DD) in KL timezone.
+ * @param filterEntityId  - When level = "adset", restricts to this campaign_id.
+ *                          When level = "ad",    restricts to this adset_id.
+ */
+async function queryJourneyLeadCounts(
+  level: AdsManagerLevel,
+  projectId: string,
+  dateFrom: string,
+  dateTo: string,
+  filterEntityId: string
+): Promise<{ byEntity: Map<string, number>; totalAll: number }> {
+  const idColumnMap: Record<AdsManagerLevel, string> = {
+    campaign: "meta_campaign_id",
+    adset: "meta_adset_id",
+    ad: "meta_ad_id",
+  };
+  const idColumn = idColumnMap[level];
+
+  const parentColumnMap: Record<AdsManagerLevel, string | null> = {
+    campaign: null,
+    adset: "meta_campaign_id",
+    ad: "meta_adset_id",
+  };
+  const parentColumn = parentColumnMap[level];
+
+  // KL is UTC+8 — anchor the date window to KL midnight so sheet rows
+  // entered before 08:00 local time are not dropped by a UTC boundary.
+  const klFrom = `${dateFrom}T00:00:00+08:00`;
+  const klTo = `${dateTo}T23:59:59+08:00`;
+
+  // Query ALL optins in the window (including unattributed) so we can
+  // report a true total in the summary bar.
+  let baseQuery = supabase
+    .from("journey_events")
+    .select(idColumn)
+    .eq("project_id", projectId)
+    .eq("event_type", "optin")
+    .gte("occurred_at", klFrom)
+    .lte("occurred_at", klTo);
+
+  if (parentColumn !== null && filterEntityId !== "") {
+    baseQuery = baseQuery.eq(parentColumn, filterEntityId);
+  }
+
+  const { data, error } = await baseQuery;
+  if (error !== null || data === null) {
+    return { byEntity: new Map(), totalAll: 0 };
+  }
+
+  const byEntity = new Map<string, number>();
+  let totalAll = 0;
+
+  for (const row of data) {
+    totalAll += 1;
+    const id = (row as Record<string, unknown>)[idColumn] as string | null;
+    if (id !== null && id !== undefined) {
+      byEntity.set(id, (byEntity.get(id) ?? 0) + 1);
+    }
+  }
+
+  return { byEntity, totalAll };
+}
+
+
 
 async function queryCampaignLevel(
   accountIds: string[],
@@ -241,7 +384,7 @@ async function queryCampaignLevel(
 }> {
   const { data: insights, error: insightsError } = await supabase
     .from("meta_insights")
-    .select("campaign_id, campaign_name, spend, impressions, clicks, reach, leads, currency")
+    .select("campaign_id, campaign_name, spend, impressions, clicks, reach, leads, purchases, purchase_value, landing_page_views, currency")
     .in("integration_account_id", accountIds)
     .gte("date_start", dateFrom)
     .lte("date_start", dateTo);
@@ -259,6 +402,9 @@ async function queryCampaignLevel(
     clicks: r.clicks,
     reach: r.reach,
     leads: r.leads,
+    purchases: r.purchases,
+    purchase_value: r.purchase_value,
+    landing_page_views: r.landing_page_views,
     currency: r.currency,
   }));
 
@@ -300,7 +446,7 @@ async function queryAdsetLevel(
   const { data: insights, error: insightsError } = await supabase
     .from("meta_adset_insights")
     .select(
-      "adset_id, adset_name, campaign_id, campaign_name, spend, impressions, clicks, reach, leads, currency"
+      "adset_id, adset_name, campaign_id, campaign_name, spend, impressions, clicks, reach, leads, purchases, purchase_value, landing_page_views, currency"
     )
     .in("integration_account_id", accountIds)
     .eq("campaign_id", campaignId)
@@ -320,6 +466,9 @@ async function queryAdsetLevel(
     clicks: r.clicks,
     reach: r.reach,
     leads: r.leads,
+    purchases: r.purchases,
+    purchase_value: r.purchase_value,
+    landing_page_views: r.landing_page_views,
     currency: r.currency,
   }));
 
@@ -381,7 +530,7 @@ async function queryAdLevel(
   const { data: insights, error: insightsError } = await supabase
     .from("meta_ad_insights")
     .select(
-      "ad_id, ad_name, adset_id, campaign_id, campaign_name, spend, impressions, clicks, reach, leads, currency"
+      "ad_id, ad_name, adset_id, campaign_id, campaign_name, spend, impressions, clicks, reach, leads, purchases, purchase_value, landing_page_views, currency"
     )
     .in("integration_account_id", accountIds)
     .eq("adset_id", adsetId)
@@ -401,6 +550,9 @@ async function queryAdLevel(
     clicks: r.clicks,
     reach: r.reach,
     leads: r.leads,
+    purchases: r.purchases,
+    purchase_value: r.purchase_value,
+    landing_page_views: r.landing_page_views,
     currency: r.currency,
   }));
 
@@ -580,15 +732,24 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const accountIds = accountLinks.map((a) => a.integration_account_id);
 
     /* ── 2. Query the appropriate insight table based on level ────────────── */
-    const { insightRows, metaMap, campaignContext, adsetContext } =
-      await dispatchLevelQuery(
-        level,
-        accountIds,
-        campaignId,
-        adsetId,
-        dateFrom,
-        dateTo
-      );
+    const [{ insightRows, metaMap, campaignContext, adsetContext }, journeyData] =
+      await Promise.all([
+        dispatchLevelQuery(
+          level,
+          accountIds,
+          campaignId,
+          adsetId,
+          dateFrom,
+          dateTo
+        ),
+        queryJourneyLeadCounts(
+          level,
+          projectId,
+          dateFrom,
+          dateTo,
+          level === "adset" ? campaignId : adsetId
+        ),
+      ]);
 
     /* ── 3. Return early if no data for the window ───────────────────────── */
     if (insightRows.length === 0) {
@@ -606,9 +767,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
 
     /* ── 4. Aggregate, build rows, compute summary ───────────────────────── */
-    const { accum, currency } = aggregateRows(insightRows);
+    const { accum, currency } = aggregateRows(insightRows, journeyData.byEntity);
     const rows = buildRows(accum, metaMap);
-    const summary = buildSummary(rows, currency);
+    const summary = buildSummary(rows, currency, journeyData.totalAll);
 
     const payload: AdsManagerPayload = {
       level,
