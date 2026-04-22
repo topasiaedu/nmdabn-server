@@ -320,30 +320,38 @@ async function queryJourneyLeadCounts(
   dateTo: string,
   filterEntityId: string
 ): Promise<{ byEntity: Map<string, number>; totalAll: number }> {
-  const idColumnMap: Record<AdsManagerLevel, string> = {
+  /** Row shape returned from the explicit three-column select below. */
+  type JourneyRow = {
+    meta_campaign_id: string | null;
+    meta_adset_id: string | null;
+    meta_ad_id: string | null;
+  };
+  type JourneyColumn = keyof JourneyRow;
+
+  const idColumnMap: Record<AdsManagerLevel, JourneyColumn> = {
     campaign: "meta_campaign_id",
     adset: "meta_adset_id",
     ad: "meta_ad_id",
   };
-  const idColumn = idColumnMap[level];
+  const idColumn: JourneyColumn = idColumnMap[level];
 
-  const parentColumnMap: Record<AdsManagerLevel, string | null> = {
+  const parentColumnMap: Record<AdsManagerLevel, JourneyColumn | null> = {
     campaign: null,
     adset: "meta_campaign_id",
     ad: "meta_adset_id",
   };
-  const parentColumn = parentColumnMap[level];
+  const parentColumn: JourneyColumn | null = parentColumnMap[level];
 
   // KL is UTC+8 — anchor the date window to KL midnight so sheet rows
   // entered before 08:00 local time are not dropped by a UTC boundary.
   const klFrom = `${dateFrom}T00:00:00+08:00`;
   const klTo = `${dateTo}T23:59:59+08:00`;
 
-  // Query ALL optins in the window (including unattributed) so we can
-  // report a true total in the summary bar.
+  // Select all three ID columns so the row type is concrete and we can
+  // index into it via the typed `idColumn` key without any unsafe cast.
   let baseQuery = supabase
     .from("journey_events")
-    .select(idColumn)
+    .select("meta_campaign_id, meta_adset_id, meta_ad_id")
     .eq("project_id", projectId)
     .eq("event_type", "optin")
     .gte("occurred_at", klFrom)
@@ -361,9 +369,9 @@ async function queryJourneyLeadCounts(
   const byEntity = new Map<string, number>();
   let totalAll = 0;
 
-  for (const row of data) {
+  for (const row of data as JourneyRow[]) {
     totalAll += 1;
-    const id = (row as Record<string, unknown>)[idColumn] as string | null;
+    const id: string | null = row[idColumn];
     if (id !== null && id !== undefined) {
       byEntity.set(id, (byEntity.get(id) ?? 0) + 1);
     }
