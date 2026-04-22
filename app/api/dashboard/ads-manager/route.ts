@@ -63,6 +63,8 @@ function emptyPayload(
       total_impressions: 0,
       total_clicks: 0,
       total_reach: 0,
+      total_leads: null,
+      cost_per_lead: null,
       currency: "USD",
       ctr: null,
       cpm: null,
