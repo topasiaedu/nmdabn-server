@@ -337,9 +337,22 @@
   // ---------------------------------------------------------------------------
 
   /**
+   * Epoch ms of the last optin push. Guards against double-fires when both a
+   * native `submit` and `hl-form-submitted` fire for the same form submission,
+   * or when the event propagates through both document and window listeners.
+   * @type {number}
+   */
+  var lastOptInAt = 0;
+
+  /**
    * @param {Event} ev
    */
   function handleOptIn(ev) {
+    var now = Date.now();
+    // Deduplicate: ignore a second trigger within 500 ms of the previous one.
+    if (now - lastOptInAt < 500) return;
+    lastOptInAt = now;
+
     var cid = "";
     if (
       ev !== null &&
@@ -365,10 +378,24 @@
       );
     }
     push(buildEvent("optin", {}));
+    // Flush immediately instead of waiting for the 5-second interval.
+    // GHL funnels redirect to a thank-you page within milliseconds of submit;
+    // some mobile browsers drop keepalive fetch requests on navigation, so
+    // getting the POST out before the redirect is the only reliable guarantee.
+    flush();
   }
 
-  document.addEventListener("submit", handleOptIn);
+  // Capture phase: GHL's own JS calls stopPropagation() on form elements,
+  // which blocks bubble-phase listeners on document from seeing the submit.
+  document.addEventListener("submit", handleOptIn, true);
+
+  // Listen on both document and window for hl-form-submitted.
+  // GHL dispatches the event inconsistently across funnel page types —
+  // sometimes on the form element (bubbles to document), sometimes directly
+  // on window (never reaches document). Both listeners + the 500ms dedup
+  // above ensure exactly one optin is recorded regardless of dispatch target.
   document.addEventListener("hl-form-submitted", handleOptIn);
+  window.addEventListener("hl-form-submitted", handleOptIn);
 
   // ---------------------------------------------------------------------------
   // Optional heatmap sampling (mousemove)
