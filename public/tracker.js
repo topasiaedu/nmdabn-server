@@ -33,6 +33,10 @@
   var STORAGE_SID = "nm_sid";
   var STORAGE_LAST = "nm_last";
   var STORAGE_CID = "nm_cid";
+  /** localStorage key for the write-ahead optin buffer (survives fast redirects). */
+  var STORAGE_PENDING_OPTIN = "nm_pending_optin";
+  /** Max age (ms) for a pending optin to be replayed — 5 minutes. */
+  var PENDING_OPTIN_TTL_MS = 5 * 60 * 1000;
 
   if (!SITE_ID || String(SITE_ID).trim() === "") {
     return;
@@ -184,8 +188,62 @@
   window.addEventListener("pagehide", flush);
 
   // ---------------------------------------------------------------------------
-  // Event builders
+  // Write-ahead optin buffer — replay any pending optin from previous page
   // ---------------------------------------------------------------------------
+  //
+  // GHL funnels redirect to a thank-you page immediately after form submit.
+  // Even with keepalive:true the browser may not finish the fetch before the
+  // navigation tears down the page context on some mobile browsers / WebViews.
+  //
+  // Strategy: on optin detection, write the batch to localStorage first
+  // (synchronous — survives navigation instantly), then attempt the keepalive
+  // fetch as usual. On the NEXT page load that includes this tracker, read the
+  // stored batch and replay it, then clear the key so it is only sent once.
+
+  /**
+   * Saves an optin batch payload string to localStorage for cross-page replay.
+   *
+   * @param {string} jsonBody — the same JSON string that will be sent via fetch
+   */
+  function savePendingOptin(jsonBody) {
+    try {
+      var entry = JSON.stringify({ ts: Date.now(), body: jsonBody });
+      window.localStorage.setItem(STORAGE_PENDING_OPTIN, entry);
+    } catch {
+      /* quota / private mode */
+    }
+  }
+
+  /**
+   * Checks localStorage for a pending optin saved by a previous page and sends
+   * it if it is still within the TTL window. Called once at page load so the
+   * thank-you page (or any next funnel step) completes the delivery.
+   */
+  function replayPendingOptin() {
+    try {
+      var raw = window.localStorage.getItem(STORAGE_PENDING_OPTIN);
+      if (!raw) return;
+      // Clear immediately — even if the send fails we don't want to retry
+      // indefinitely and risk double-counting a real submission.
+      window.localStorage.removeItem(STORAGE_PENDING_OPTIN);
+      var entry = JSON.parse(raw);
+      if (
+        entry === null ||
+        typeof entry !== "object" ||
+        typeof entry.body !== "string" ||
+        typeof entry.ts !== "number" ||
+        Date.now() - entry.ts > PENDING_OPTIN_TTL_MS
+      ) {
+        return;
+      }
+      sendPayload(entry.body);
+    } catch {
+      /* corrupt entry — ignore */
+    }
+  }
+
+  // Replay on this page load before registering any new listeners.
+  replayPendingOptin();
 
   /**
    * Adds key to `out` only when value should be serialized (truthy strings,
@@ -378,11 +436,33 @@
       );
     }
     push(buildEvent("optin", {}));
+
+    // Build the payload that flush() would produce, save it to localStorage
+    // BEFORE attempting the network send. If the browser navigates away before
+    // the keepalive fetch completes, the next page that loads this tracker will
+    // call replayPendingOptin() and deliver it.
+    var optinBatch = queue.slice();
+    var optinPayload = JSON.stringify({
+      site_id: SITE_ID,
+      session_id: getSessionId(),
+      events: optinBatch,
+    });
+    savePendingOptin(optinPayload);
+
     // Flush immediately instead of waiting for the 5-second interval.
     // GHL funnels redirect to a thank-you page within milliseconds of submit;
     // some mobile browsers drop keepalive fetch requests on navigation, so
     // getting the POST out before the redirect is the only reliable guarantee.
     flush();
+
+    // Clear the pending-optin entry only after flush() has sent it. If
+    // sendPayload succeeds the localStorage entry is redundant; remove it so
+    // the replay on the next page is a no-op.
+    try {
+      window.localStorage.removeItem(STORAGE_PENDING_OPTIN);
+    } catch {
+      /* ignore */
+    }
   }
 
   // Capture phase: GHL's own JS calls stopPropagation() on form elements,
