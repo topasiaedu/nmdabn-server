@@ -197,7 +197,10 @@ async function fetchMetaCampaigns(
     "id",
     "name",
     "status",
+    "effective_status",
     "objective",
+    "daily_budget",
+    "lifetime_budget",
     "created_time",
     "updated_time",
   ].join(",");
@@ -205,7 +208,12 @@ async function fetchMetaCampaigns(
     fields,
     limit: GRAPH_PAGE_LIMIT,
   });
-  const firstUrl = `${META_GRAPH_BASE}/${accountPath}/campaigns?${qs.toString()}`;
+  // Meta expects effective_status as a literal JSON array in the URL – not
+  // URL-encoded. URLSearchParams would turn "[" into "%5B", which Meta rejects
+  // as an "Invalid parameter". We append it manually as a raw string instead.
+  const statusFilter =
+    `effective_status=["ACTIVE","PAUSED","ARCHIVED","IN_PROCESS","WITH_ISSUES"]`;
+  const firstUrl = `${META_GRAPH_BASE}/${accountPath}/campaigns?${qs.toString()}&${statusFilter}`;
   return fetchAllGraphDataPages(accessToken, firstUrl);
 }
 
@@ -219,6 +227,7 @@ async function fetchMetaAdsets(
     "name",
     "campaign_id",
     "status",
+    "effective_status",
     "optimization_goal",
     "billing_event",
     "daily_budget",
@@ -228,7 +237,9 @@ async function fetchMetaAdsets(
     fields,
     limit: GRAPH_PAGE_LIMIT,
   });
-  const firstUrl = `${META_GRAPH_BASE}/${accountPath}/adsets?${qs.toString()}`;
+  const statusFilter =
+    `effective_status=["ACTIVE","PAUSED","ARCHIVED","IN_PROCESS","WITH_ISSUES"]`;
+  const firstUrl = `${META_GRAPH_BASE}/${accountPath}/adsets?${qs.toString()}&${statusFilter}`;
   return fetchAllGraphDataPages(accessToken, firstUrl);
 }
 
@@ -243,12 +254,15 @@ async function fetchMetaAds(
     "adset_id",
     "campaign_id",
     "status",
+    "effective_status",
   ].join(",");
   const qs = new URLSearchParams({
     fields,
     limit: GRAPH_PAGE_LIMIT,
   });
-  const firstUrl = `${META_GRAPH_BASE}/${accountPath}/ads?${qs.toString()}`;
+  const statusFilter =
+    `effective_status=["ACTIVE","PAUSED","ARCHIVED","IN_PROCESS","WITH_ISSUES"]`;
+  const firstUrl = `${META_GRAPH_BASE}/${accountPath}/ads?${qs.toString()}&${statusFilter}`;
   return fetchAllGraphDataPages(accessToken, firstUrl);
 }
 
@@ -433,6 +447,16 @@ function parseMoney(v: unknown): number | null {
   return null;
 }
 
+/**
+ * Meta returns budget fields (daily_budget, lifetime_budget) in the smallest
+ * currency unit — i.e. cents. Divide by 100 to get the display amount.
+ */
+function parseBudget(v: unknown): number | null {
+  const raw = parseMoney(v);
+  if (raw === null) return null;
+  return raw / 100;
+}
+
 function parseStringOrNull(v: unknown): string | null {
   return typeof v === "string" && v.trim() !== "" ? v.trim() : null;
 }
@@ -444,7 +468,8 @@ function parseStringOrNull(v: unknown): string | null {
 async function upsertMetaCampaigns(
   supabase: SupabaseClient<Database>,
   integrationAccountId: string,
-  campaigns: Record<string, unknown>[]
+  campaigns: Record<string, unknown>[],
+  campaignIdsWithActiveAds: Set<string>
 ): Promise<number> {
   const nowIso = new Date().toISOString();
   let total = 0;
@@ -461,8 +486,30 @@ async function upsertMetaCampaigns(
           id,
           integration_account_id: integrationAccountId,
           name: parseStringOrNull(c["name"]),
-          status: parseStringOrNull(c["status"]),
+          // effective_status reflects actual delivery state (e.g. PAUSED, WITH_ISSUES)
+          // whereas status is just what the advertiser configured. Use effective_status
+          // so the dashboard matches what Meta Ads Manager shows.
+          // Additionally, synthesise "ADS_OFF" when the campaign is ACTIVE but none
+          // of its child adsets are active — matching Meta's "Ads off" delivery label.
+          status: (() => {
+            const es =
+              parseStringOrNull(c["effective_status"]) ??
+              parseStringOrNull(c["status"]);
+            if (es === "ACTIVE" && !campaignIdsWithActiveAds.has(id)) {
+              return "ADS_OFF";
+            }
+            return es;
+          })(),
           objective: parseStringOrNull(c["objective"]),
+          daily_budget: parseBudget(c["daily_budget"]),
+          lifetime_budget: parseBudget(c["lifetime_budget"]),
+          // CBO = budget is set at campaign level (daily or lifetime).
+          // ABO = no campaign-level budget; each adset has its own.
+          is_cbo:
+            (typeof c["daily_budget"] === "string" &&
+              c["daily_budget"] !== "0") ||
+            (typeof c["lifetime_budget"] === "string" &&
+              c["lifetime_budget"] !== "0"),
           raw_json: c as Json,
           synced_at: nowIso,
         };
@@ -503,11 +550,11 @@ async function upsertMetaAdsets(
           integration_account_id: integrationAccountId,
           campaign_id: campaignId,
           name: parseStringOrNull(a["name"]),
-          status: parseStringOrNull(a["status"]),
+          status: parseStringOrNull(a["effective_status"]) ?? parseStringOrNull(a["status"]),
           optimization_goal: parseStringOrNull(a["optimization_goal"]),
           billing_event: parseStringOrNull(a["billing_event"]),
-          daily_budget: parseMoney(a["daily_budget"]),
-          lifetime_budget: parseMoney(a["lifetime_budget"]),
+          daily_budget: parseBudget(a["daily_budget"]),
+          lifetime_budget: parseBudget(a["lifetime_budget"]),
           raw_json: a as Json,
           synced_at: nowIso,
         };
@@ -550,7 +597,7 @@ async function upsertMetaAds(
           adset_id: adsetId,
           campaign_id: campaignId,
           name: parseStringOrNull(a["name"]),
-          status: parseStringOrNull(a["status"]),
+          status: parseStringOrNull(a["effective_status"]) ?? parseStringOrNull(a["status"]),
           raw_json: a as Json,
           synced_at: nowIso,
         };
@@ -839,22 +886,41 @@ async function syncSingleAccount(
 
   const campaigns = await fetchMetaCampaigns(token, adAccountGraphId);
   console.log(`[meta-ads-sync] Fetched ${campaigns.length} campaigns`);
+
+  // Fetch adsets before upserting campaigns so we can compute "Ads off".
+  const adsets = await fetchMetaAdsets(token, adAccountGraphId);
+  console.log(`[meta-ads-sync] Fetched ${adsets.length} ad sets`);
+
+  // Meta shows "Ads off" when campaign+adset are ACTIVE but ALL child ads are
+  // paused/off. Check at ad level (not adset) to match Meta Ads Manager's label.
+  const ads = await fetchMetaAds(token, adAccountGraphId);
+  console.log(`[meta-ads-sync] Fetched ${ads.length} ads`);
+
+  // Set of campaign IDs that have ≥1 ad with effective_status="ACTIVE".
+  const campaignIdsWithActiveAds = new Set<string>();
+  for (const ad of ads) {
+    const es =
+      typeof ad["effective_status"] === "string" ? ad["effective_status"] : "";
+    const cid =
+      typeof ad["campaign_id"] === "string" ? ad["campaign_id"] : "";
+    if (es === "ACTIVE" && cid !== "") {
+      campaignIdsWithActiveAds.add(cid);
+    }
+  }
+
   const cCount = await upsertMetaCampaigns(
     supabaseClient,
     integrationAccountId,
-    campaigns
+    campaigns,
+    campaignIdsWithActiveAds
   );
 
-  const adsets = await fetchMetaAdsets(token, adAccountGraphId);
-  console.log(`[meta-ads-sync] Fetched ${adsets.length} ad sets`);
   const asCount = await upsertMetaAdsets(
     supabaseClient,
     integrationAccountId,
     adsets
   );
 
-  const ads = await fetchMetaAds(token, adAccountGraphId);
-  console.log(`[meta-ads-sync] Fetched ${ads.length} ads`);
   const adCount = await upsertMetaAds(supabaseClient, integrationAccountId, ads);
 
   const insights = await fetchMetaInsights(

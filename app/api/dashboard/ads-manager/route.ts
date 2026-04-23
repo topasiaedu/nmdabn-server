@@ -197,6 +197,9 @@ type EntityMeta = {
   name: string | null;
   status: string | null;
   label: string | null;
+  daily_budget: number | null;
+  lifetime_budget: number | null;
+  is_cbo: boolean | null;
 };
 
 /** Converts a positive count to itself, or null when zero (avoids "0 leads" confusion). */
@@ -233,6 +236,9 @@ function accumToRow(
     purchase_value: positiveOrNull(acc.purchase_value),
     roas: acc.purchase_value > 0 ? acc.purchase_value / acc.spend : null,
     landing_page_views: positiveOrNull(acc.landing_page_views),
+    daily_budget: meta?.daily_budget ?? null,
+    lifetime_budget: meta?.lifetime_budget ?? null,
+    is_cbo: meta?.is_cbo ?? null,
   };
 }
 
@@ -422,7 +428,7 @@ async function queryCampaignLevel(
   if (uniqueIds.length > 0) {
     const { data: campaigns, error: campaignsError } = await supabase
       .from("meta_campaigns")
-      .select("id, name, status, objective")
+      .select("id, name, status, objective, daily_budget, lifetime_budget, is_cbo")
       .in("id", uniqueIds);
 
     if (campaignsError !== null) {
@@ -434,6 +440,9 @@ async function queryCampaignLevel(
         name: c.name,
         status: c.status,
         label: c.objective,
+        daily_budget: c.daily_budget ?? null,
+        lifetime_budget: c.lifetime_budget ?? null,
+        is_cbo: c.is_cbo ?? false,
       });
     }
   }
@@ -486,7 +495,7 @@ async function queryAdsetLevel(
   if (uniqueIds.length > 0) {
     const { data: adsets, error: adsetsError } = await supabase
       .from("meta_adsets")
-      .select("id, name, status, optimization_goal")
+      .select("id, name, status, optimization_goal, daily_budget, lifetime_budget")
       .in("id", uniqueIds);
 
     if (adsetsError !== null) {
@@ -498,6 +507,9 @@ async function queryAdsetLevel(
         name: a.name,
         status: a.status,
         label: a.optimization_goal,
+        daily_budget: a.daily_budget ?? null,
+        lifetime_budget: a.lifetime_budget ?? null,
+        is_cbo: null,
       });
     }
   }
@@ -578,7 +590,14 @@ async function queryAdLevel(
     }
 
     for (const a of ads ?? []) {
-      metaMap.set(a.id, { name: a.name, status: a.status, label: null });
+      metaMap.set(a.id, {
+        name: a.name,
+        status: a.status,
+        label: null,
+        daily_budget: null,
+        lifetime_budget: null,
+        is_cbo: null,
+      });
     }
   }
 

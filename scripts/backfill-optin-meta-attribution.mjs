@@ -122,8 +122,14 @@ function looksLikeMetaId(value) {
  * @returns {{ prefix: string; country: string | null }}
  */
 function decomposeUtmContent(utmContent) {
-  const raw = (utmContent ?? "").trim();
+  let raw = (utmContent ?? "").trim();
   if (raw === "") return { prefix: "", country: null };
+
+  // Legacy UTMs used dashes: "GT1-Apple-MY". Normalise to underscores.
+  if (!raw.includes("_") && raw.includes("-")) {
+    raw = raw.replace(/-/g, "_");
+  }
+
   const parts = raw.split("_");
   if (parts.length < 2) return { prefix: raw, country: null };
   const last = parts[parts.length - 1];
@@ -147,18 +153,36 @@ function matchAdsetByName(utmContent, utmCampaign, adsets) {
   const { prefix, country } = decomposeUtmContent(content);
   if (prefix === "") return null;
 
-  const prefixLower = prefix.toLowerCase();
   const campaignLower = campaign.toLowerCase();
 
-  const candidates = adsets.filter((adset) => {
-    const nameLower = (adset.name ?? "").toLowerCase();
-    const hasPrefix = nameLower.includes(prefixLower);
-    const hasAngle = nameLower.includes(campaignLower);
-    const hasCountry =
-      country === null ||
-      nameLower.includes(`(${country.toLowerCase()})`);
-    return hasPrefix && hasAngle && hasCountry;
-  });
+  /**
+   * Filters adsets containing prefix + angle + country.
+   * Country check is loose so "(MY & SG)" satisfies a "MY" filter.
+   * @param {string} searchPrefix
+   */
+  function filterCandidates(searchPrefix) {
+    const pfxLower = searchPrefix.toLowerCase();
+    return adsets.filter((adset) => {
+      const nameLower = (adset.name ?? "").toLowerCase();
+      const hasPrefix = nameLower.includes(pfxLower);
+      const hasAngle = nameLower.includes(campaignLower);
+      const hasCountry =
+        country === null || nameLower.includes(country.toLowerCase());
+      return hasPrefix && hasAngle && hasCountry;
+    });
+  }
+
+  let candidates = filterCandidates(prefix);
+
+  // Fallback: drop the last "_" segment and retry once.
+  // Handles "GT1_lookalike_FB" → "GT1_lookalike" matching
+  // "GT1_Lookalike 1-3%_FB_Video_*".
+  if (candidates.length === 0) {
+    const lastUnderscore = prefix.lastIndexOf("_");
+    if (lastUnderscore > 0) {
+      candidates = filterCandidates(prefix.slice(0, lastUnderscore));
+    }
+  }
 
   if (candidates.length === 0) return null;
 

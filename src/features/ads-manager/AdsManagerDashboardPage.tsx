@@ -22,8 +22,10 @@ import {
   Eye,
   MousePointerClick,
   RefreshCw,
+  Search,
   Settings,
   ShoppingCart,
+  SlidersHorizontal,
   Target,
   TrendingUp,
   Users,
@@ -141,9 +143,16 @@ function buildPresets(): DatePreset[] {
 // Status badge helper
 // ---------------------------------------------------------------------------
 
+function filterPillLabel(f: "all" | "active" | "paused" | "ads_off"): string {
+  if (f === "all") return "All";
+  if (f === "ads_off") return "Ads off";
+  return `${f.charAt(0).toUpperCase()}${f.slice(1)}`;
+}
+
 function statusBadgeClasses(status: string | null): string {
   const s = (status ?? "").toUpperCase();
   if (s === "ACTIVE") return "bg-emerald-50 text-emerald-700 border-emerald-200";
+  if (s === "ADS_OFF") return "bg-orange-50 text-orange-700 border-orange-200";
   if (s === "PAUSED") return "bg-amber-50 text-amber-700 border-amber-200";
   if (s === "DELETED" || s === "ARCHIVED") {
     return "bg-red-50 text-red-700 border-red-200";
@@ -207,6 +216,7 @@ function SyncButton({
   const [syncing, setSyncing] = useState<boolean>(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncResult, setSyncResult] = useState<SyncResultBody | null>(null);
+  const [syncedAt, setSyncedAt] = useState<Date | null>(null);
 
   const handleSync = useCallback(async (): Promise<void> => {
     setSyncing(true);
@@ -238,6 +248,7 @@ function SyncButton({
       } else {
         const resultData = isRecord(body) ? body["data"] ?? body : body;
         setSyncResult(isSyncResultBody(resultData) ? resultData : null);
+        setSyncedAt(new Date());
         onSyncComplete();
       }
     } catch (e) {
@@ -249,15 +260,22 @@ function SyncButton({
 
   return (
     <div className="flex flex-col gap-2 items-end">
-      <button
-        type="button"
-        onClick={() => { void handleSync(); }}
-        disabled={syncing}
-        className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-      >
-        <RefreshCw size={14} className={syncing ? "animate-spin" : ""} />
-        {syncing ? "Syncing…" : "Sync Now"}
-      </button>
+      <div className="flex items-center gap-3">
+        {syncedAt !== null && (
+          <span className="text-xs text-slate-400">
+            {`Last synced: ${syncedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={() => { void handleSync(); }}
+          disabled={syncing}
+          className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+        >
+          <RefreshCw size={14} className={syncing ? "animate-spin" : ""} />
+          {syncing ? "Syncing…" : "Sync Now"}
+        </button>
+      </div>
 
       {syncError !== null && (
         <div className="flex items-center gap-1 text-xs text-red-600">
@@ -269,10 +287,7 @@ function SyncButton({
       {syncResult !== null && (
         <div className="flex flex-col gap-1 items-end">
           <span className="text-xs text-emerald-600 font-medium">
-            {`Synced: ${syncResult.campaignsUpserted} campaigns, ${syncResult.adsetsUpserted} ad sets, ${syncResult.adsUpserted} ads`}
-          </span>
-          <span className="text-xs text-slate-500">
-            {`${syncResult.insightRowsUpserted} campaign insights, ${syncResult.adsetInsightRowsUpserted} adset insights, ${syncResult.adInsightRowsUpserted} ad insights`}
+            {`${syncResult.campaignsUpserted} campaigns · ${syncResult.adsetsUpserted} ad sets · ${syncResult.adsUpserted} ads synced`}
           </span>
           {syncResult.lines.map((line) =>
             line.error === undefined ? null : (
@@ -455,68 +470,81 @@ type SummaryBarProps = Readonly<{
 function SummaryBar({ summary }: SummaryBarProps): React.ReactElement {
   const currency = summary.currency;
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 xl:grid-cols-11 gap-4">
-      <KpiCard
-        title="Spend"
-        value={formatMoney(summary.total_spend, currency)}
-        icon={<DollarSign size={20} />}
-      />
-      <KpiCard
-        title="Impressions"
-        value={formatNumber(summary.total_impressions)}
-        icon={<Eye size={20} />}
-      />
-      <KpiCard
-        title="Clicks"
-        value={formatNumber(summary.total_clicks)}
-        icon={<MousePointerClick size={20} />}
-      />
-      <KpiCard
-        title="Reach"
-        value={formatNumber(summary.total_reach)}
-        icon={<Users size={20} />}
-      />
-      <KpiCard
-        title="Leads"
-        value={summary.total_leads === null ? "—" : formatNumber(summary.total_leads)}
-        icon={<Target size={20} />}
-        badge={summary.total_leads !== null && summary.total_leads > 0 ? "Live" : undefined}
-        badgeColor="green"
-      />
-      <KpiCard
-        title="CPL"
-        value={summary.cost_per_lead === null ? "—" : formatMoney(summary.cost_per_lead, currency)}
-        icon={<DollarSign size={20} />}
-      />
-      <KpiCard
-        title="Purchases"
-        value={summary.total_purchases === null ? "—" : formatNumber(summary.total_purchases)}
-        icon={<ShoppingCart size={20} />}
-      />
-      <KpiCard
-        title="Revenue"
-        value={summary.total_purchase_value === null ? "—" : formatMoney(summary.total_purchase_value, currency)}
-        icon={<DollarSign size={20} />}
-      />
-      <KpiCard
-        title="ROAS"
-        value={summary.roas === null ? "—" : `${summary.roas.toFixed(2)}x`}
-        icon={<TrendingUp size={20} />}
-        badge={summary.roas !== null && summary.roas >= 2 ? "Good" : undefined}
-        badgeColor="green"
-      />
-      <KpiCard
-        title="LPV"
-        value={summary.total_landing_page_views === null ? "—" : formatNumber(summary.total_landing_page_views)}
-        icon={<MousePointerClick size={20} />}
-      />
-      <KpiCard
-        title="CTR"
-        value={formatPct(summary.ctr)}
-        icon={<TrendingUp size={20} />}
-        badge={summary.ctr !== null && summary.ctr >= 2 ? "Good" : undefined}
-        badgeColor="green"
-      />
+    <div className="overflow-x-auto pb-1">
+      <div className="flex gap-3 min-w-max">
+        <KpiCard
+          className="min-w-[150px]"
+          title="Spend"
+          value={formatMoney(summary.total_spend, currency)}
+          icon={<DollarSign size={18} />}
+        />
+        <KpiCard
+          className="min-w-[150px]"
+          title="Impressions"
+          value={formatNumber(summary.total_impressions)}
+          icon={<Eye size={18} />}
+        />
+        <KpiCard
+          className="min-w-[140px]"
+          title="Clicks"
+          value={formatNumber(summary.total_clicks)}
+          icon={<MousePointerClick size={18} />}
+        />
+        <KpiCard
+          className="min-w-[140px]"
+          title="Reach"
+          value={formatNumber(summary.total_reach)}
+          icon={<Users size={18} />}
+        />
+        <KpiCard
+          className="min-w-[140px]"
+          title="Leads"
+          value={summary.total_leads === null ? "—" : formatNumber(summary.total_leads)}
+          icon={<Target size={18} />}
+          badge={summary.total_leads !== null && summary.total_leads > 0 ? "Live" : undefined}
+          badgeColor="green"
+        />
+        <KpiCard
+          className="min-w-[150px]"
+          title="Cost Per Result"
+          value={summary.cost_per_lead === null ? "—" : formatMoney(summary.cost_per_lead, currency)}
+          icon={<DollarSign size={18} />}
+        />
+        <KpiCard
+          className="min-w-[140px]"
+          title="Purchases"
+          value={summary.total_purchases === null ? "—" : formatNumber(summary.total_purchases)}
+          icon={<ShoppingCart size={18} />}
+        />
+        <KpiCard
+          className="min-w-[150px]"
+          title="Revenue"
+          value={summary.total_purchase_value === null ? "—" : formatMoney(summary.total_purchase_value, currency)}
+          icon={<DollarSign size={18} />}
+        />
+        <KpiCard
+          className="min-w-[120px]"
+          title="Return on Ad Spend"
+          value={summary.roas === null ? "—" : `${summary.roas.toFixed(2)}x`}
+          icon={<TrendingUp size={18} />}
+          badge={summary.roas !== null && summary.roas >= 2 ? "Good" : undefined}
+          badgeColor="green"
+        />
+        <KpiCard
+          className="min-w-[130px]"
+          title="Landing Page Views"
+          value={summary.total_landing_page_views === null ? "—" : formatNumber(summary.total_landing_page_views)}
+          icon={<MousePointerClick size={18} />}
+        />
+        <KpiCard
+          className="min-w-[120px]"
+          title="Click-Through Rate"
+          value={formatPct(summary.ctr)}
+          icon={<TrendingUp size={18} />}
+          badge={summary.ctr !== null && summary.ctr >= 2 ? "Good" : undefined}
+          badgeColor="green"
+        />
+      </div>
     </div>
   );
 }
@@ -592,12 +620,142 @@ function Breadcrumb({
 }
 
 // ---------------------------------------------------------------------------
+// Budget cell helper
+// ---------------------------------------------------------------------------
+
+type BudgetCellProps = Readonly<{
+  dailyBudget: number | null;
+  lifetimeBudget: number | null;
+  isCbo: boolean | null;
+  currency: string;
+}>;
+
+function BudgetCell({
+  dailyBudget,
+  lifetimeBudget,
+  isCbo,
+  currency,
+}: BudgetCellProps): React.ReactElement {
+  const activeBudget = dailyBudget ?? lifetimeBudget;
+  if (activeBudget === null) {
+    return <span className="text-slate-400">—</span>;
+  }
+
+  const budgetType = dailyBudget === null ? "lifetime" : "daily";
+  return (
+    <div className="flex flex-col items-end gap-0.5">
+      <span className="font-medium text-slate-900">
+        {formatMoney(activeBudget, currency)}
+      </span>
+      <div className="flex items-center gap-1">
+        <span className="text-xs text-slate-400">{budgetType}</span>
+        {isCbo !== null && (
+          <span
+            className={`inline-block px-1.5 py-0 text-[10px] font-bold rounded border ${
+              isCbo
+                ? "bg-violet-50 text-violet-700 border-violet-200"
+                : "bg-sky-50 text-sky-700 border-sky-200"
+            }`}
+          >
+            {isCbo ? "CBO" : "ABO"}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Column definitions and persistence
+// ---------------------------------------------------------------------------
+
+/** Identifies each optional data column in the table. */
+type ColumnKey =
+  | "spend"
+  | "budget"
+  | "impressions"
+  | "clicks"
+  | "reach"
+  | "leads"
+  | "cost_per_lead"
+  | "purchases"
+  | "purchase_value"
+  | "roas"
+  | "landing_page_views"
+  | "ctr"
+  | "cpm"
+  | "cpc";
+
+type ColumnDef = Readonly<{
+  key: ColumnKey;
+  label: string;
+  sortKey: SortKey;
+  defaultVisible: boolean;
+  tooltip?: string;
+}>;
+
+const COLUMN_DEFS: ReadonlyArray<ColumnDef> = [
+  { key: "spend", label: "Spend", sortKey: "spend", defaultVisible: true },
+  { key: "budget", label: "Budget", sortKey: "daily_budget", defaultVisible: true },
+  { key: "impressions", label: "Impressions", sortKey: "impressions", defaultVisible: true },
+  { key: "clicks", label: "Clicks", sortKey: "clicks", defaultVisible: true },
+  { key: "reach", label: "Reach", sortKey: "reach", defaultVisible: true },
+  { key: "leads", label: "Leads", sortKey: "leads", defaultVisible: true },
+  {
+    key: "cost_per_lead",
+    label: "Cost Per Result",
+    sortKey: "cost_per_lead",
+    defaultVisible: true,
+    tooltip: "Cost Per Result — the average amount spent to get one lead result",
+  },
+  { key: "purchases", label: "Purchases", sortKey: "purchases", defaultVisible: false },
+  { key: "purchase_value", label: "Revenue", sortKey: "purchase_value", defaultVisible: false },
+  { key: "roas", label: "Return on Ad Spend", sortKey: "roas", defaultVisible: false },
+  { key: "landing_page_views", label: "Landing Page Views", sortKey: "landing_page_views", defaultVisible: true },
+  { key: "ctr", label: "Click-Through Rate", sortKey: "ctr", defaultVisible: true },
+  { key: "cpm", label: "Cost Per Mille", sortKey: "cpm", defaultVisible: false },
+  { key: "cpc", label: "Cost Per Click", sortKey: "cpc", defaultVisible: false },
+];
+
+const LS_COL_KEY = "nm-ads-manager-visible-cols";
+
+/** Load visible column set from localStorage, falling back to defaults. */
+function loadVisibleCols(): Set<ColumnKey> {
+  try {
+    const raw = localStorage.getItem(LS_COL_KEY);
+    if (raw !== null) {
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const valid = (parsed as unknown[]).filter((k): k is ColumnKey => {
+          if (typeof k !== "string") return false;
+          return COLUMN_DEFS.some((d) => d.key === k);
+        });
+        if (valid.length > 0) return new Set(valid);
+      }
+    }
+  } catch {
+    // localStorage unavailable or corrupt JSON — use defaults
+  }
+  return new Set(COLUMN_DEFS.filter((d) => d.defaultVisible).map((d) => d.key));
+}
+
+/** Persist visible columns to localStorage. */
+function saveVisibleCols(cols: Set<ColumnKey>): void {
+  try {
+    localStorage.setItem(LS_COL_KEY, JSON.stringify([...cols]));
+  } catch {
+    // localStorage unavailable
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Entity table
 // ---------------------------------------------------------------------------
 
 type SortKey =
   | "entity_name"
   | "spend"
+  | "daily_budget"
   | "impressions"
   | "clicks"
   | "reach"
@@ -618,7 +776,8 @@ function columnHeader(
   key: SortKey,
   sortKey: SortKey,
   sortDir: SortDir,
-  onSort: (k: SortKey) => void
+  onSort: (k: SortKey) => void,
+  tooltip?: string
 ): React.ReactElement {
   const active = sortKey === key;
   return (
@@ -629,6 +788,14 @@ function columnHeader(
     >
       <span className="inline-flex items-center gap-1 justify-end">
         {label}
+        {tooltip !== undefined && (
+          <span
+            className="text-slate-400 cursor-help font-normal normal-case tracking-normal"
+            title={tooltip}
+          >
+            ⓘ
+          </span>
+        )}
         {active && (
           <span className="text-indigo-600">{sortDir === "desc" ? "↓" : "↑"}</span>
         )}
@@ -658,6 +825,28 @@ function EntityTable({
 }: EntityTableProps): React.ReactElement {
   const [sortKey, setSortKey] = useState<SortKey>("spend");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "paused" | "ads_off">("all");
+  const [visibleCols, setVisibleCols] = useState<Set<ColumnKey>>(loadVisibleCols);
+  const [showColMenu, setShowColMenu] = useState<boolean>(false);
+  const colMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent): void {
+      if (
+        colMenuRef.current !== null &&
+        !colMenuRef.current.contains(e.target as Node)
+      ) {
+        setShowColMenu(false);
+      }
+    }
+    if (showColMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showColMenu]);
 
   function handleSort(key: SortKey): void {
     if (sortKey === key) {
@@ -668,7 +857,36 @@ function EntityTable({
     }
   }
 
-  const sorted = [...rows].sort((a, b) => {
+  function isVisible(key: ColumnKey): boolean {
+    return visibleCols.has(key);
+  }
+
+  function toggleCol(key: ColumnKey): void {
+    setVisibleCols((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      saveVisibleCols(next);
+      return next;
+    });
+  }
+
+  const filtered = rows
+    .filter(
+      (row) =>
+        searchQuery === "" ||
+        row.entity_name.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+    .filter(
+      (row) =>
+        statusFilter === "all" ||
+        (row.entity_status ?? "").toUpperCase() === statusFilter.toUpperCase()
+    );
+
+  const sorted = [...filtered].sort((a, b) => {
     const mul = sortDir === "desc" ? -1 : 1;
     if (sortKey === "entity_name") {
       return mul * a.entity_name.localeCompare(b.entity_name);
@@ -686,6 +904,79 @@ function EntityTable({
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+
+      {/* ── Toolbar: search · status filters · columns toggle ─────────────── */}
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100 flex-wrap">
+        {/* Search */}
+        <div className="relative">
+          <Search
+            size={13}
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+          />
+          <input
+            type="text"
+            placeholder={`Search ${entityLabel.toLowerCase()}s…`}
+            value={searchQuery}
+            onChange={(e) => { setSearchQuery(e.target.value); }}
+            className="pl-8 pr-3 py-1.5 text-sm border border-slate-200 rounded-lg w-52 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+          />
+        </div>
+
+        {/* Status filter pills */}
+        <div className="flex items-center gap-1">
+          {(["all", "active", "paused", "ads_off"] as const).map((f) => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => { setStatusFilter(f); }}
+              className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
+                statusFilter === f
+                  ? "bg-indigo-600 text-white border-indigo-600"
+                  : "text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600"
+              }`}
+            >
+              {filterPillLabel(f)}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex-1" />
+
+        {/* Columns customization */}
+        <div className="relative" ref={colMenuRef}>
+          <button
+            type="button"
+            onClick={() => { setShowColMenu((p) => !p); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+          >
+            <SlidersHorizontal size={13} />
+            Columns
+          </button>
+          {showColMenu && (
+            <div className="absolute right-0 top-9 z-50 w-52 bg-white border border-slate-200 rounded-xl shadow-lg py-2">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide px-3 pb-1.5">
+                Visible columns
+              </p>
+              {COLUMN_DEFS.map((col) => (
+                <label
+                  key={col.key}
+                  className="flex items-center gap-2.5 px-3 py-1.5 hover:bg-slate-50 cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={visibleCols.has(col.key)}
+                    onChange={() => { toggleCol(col.key); }}
+                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span className="text-sm text-slate-700">{col.label}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Table ─────────────────────────────────────────────────────────── */}
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 border-b border-slate-200">
@@ -696,26 +987,18 @@ function EntityTable({
               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
                 Status
               </th>
-              {columnHeader("Spend", "spend", sortKey, sortDir, handleSort)}
-              {columnHeader("Impressions", "impressions", sortKey, sortDir, handleSort)}
-              {columnHeader("Clicks", "clicks", sortKey, sortDir, handleSort)}
-              {columnHeader("Reach", "reach", sortKey, sortDir, handleSort)}
-              {columnHeader("Leads", "leads", sortKey, sortDir, handleSort)}
-              {columnHeader("CPL", "cost_per_lead", sortKey, sortDir, handleSort)}
-              {columnHeader("Purchases", "purchases", sortKey, sortDir, handleSort)}
-              {columnHeader("Revenue", "purchase_value", sortKey, sortDir, handleSort)}
-              {columnHeader("ROAS", "roas", sortKey, sortDir, handleSort)}
-              {columnHeader("LPV", "landing_page_views", sortKey, sortDir, handleSort)}
-              {columnHeader("CTR", "ctr", sortKey, sortDir, handleSort)}
-              {columnHeader("CPM", "cpm", sortKey, sortDir, handleSort)}
-              {columnHeader("CPC", "cpc", sortKey, sortDir, handleSort)}
+              {COLUMN_DEFS.map((col) =>
+                isVisible(col.key)
+                  ? columnHeader(col.label, col.sortKey, sortKey, sortDir, handleSort, col.tooltip)
+                  : null
+              )}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {sorted.map((row) => (
+            {sorted.map((row, idx) => (
               <tr
                 key={row.entity_id}
-                className={`hover:bg-slate-50 transition-colors ${canDrillDown ? "cursor-pointer" : ""}`}
+                className={`transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-slate-50/50"} hover:bg-indigo-50/30 ${canDrillDown ? "cursor-pointer" : ""}`}
                 onClick={() => {
                   if (canDrillDown) onDrillDown(row);
                 }}
@@ -739,83 +1022,129 @@ function EntityTable({
                     <span
                       className={`inline-block px-2 py-0.5 text-xs font-semibold rounded-full border ${statusBadgeClasses(row.entity_status)}`}
                     >
-                      {row.entity_status}
+                      {row.entity_status === "ADS_OFF" ? "Ads off" : row.entity_status}
                     </span>
                   )}
                 </td>
-                <td className="px-4 py-3 text-right font-medium text-slate-900 whitespace-nowrap">
-                  {formatMoney(row.spend, currency)}
-                </td>
-                <td className="px-4 py-3 text-right text-slate-700 whitespace-nowrap">
-                  {formatNumber(row.impressions)}
-                </td>
-                <td className="px-4 py-3 text-right text-slate-700 whitespace-nowrap">
-                  {formatNumber(row.clicks)}
-                </td>
-                <td className="px-4 py-3 text-right text-slate-700 whitespace-nowrap">
-                  {formatNumber(row.reach)}
-                </td>
-                <td className="px-4 py-3 text-right whitespace-nowrap">
-                  {row.leads === null ? (
-                    <span className="text-slate-400">—</span>
-                  ) : (
-                    <span className="font-medium text-indigo-700">
-                      {formatNumber(row.leads)}
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-right whitespace-nowrap">
-                  {row.cost_per_lead === null ? (
-                    <span className="text-slate-400">—</span>
-                  ) : (
-                    <span className="font-medium text-emerald-700">
-                      {formatMoney(row.cost_per_lead, currency)}
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-right whitespace-nowrap">
-                  {row.purchases === null ? (
-                    <span className="text-slate-400">—</span>
-                  ) : (
-                    <span className="font-medium text-indigo-700">
-                      {formatNumber(row.purchases)}
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-right whitespace-nowrap">
-                  {row.purchase_value === null ? (
-                    <span className="text-slate-400">—</span>
-                  ) : (
-                    <span className="font-medium text-emerald-700">
-                      {formatMoney(row.purchase_value, currency)}
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-right whitespace-nowrap">
-                  {row.roas === null ? (
-                    <span className="text-slate-400">—</span>
-                  ) : (
-                    <span className={`font-medium ${row.roas >= 2 ? "text-emerald-700" : "text-amber-600"}`}>
-                      {`${row.roas.toFixed(2)}x`}
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-right text-slate-700 whitespace-nowrap">
-                  {row.landing_page_views === null ? (
-                    <span className="text-slate-400">—</span>
-                  ) : formatNumber(row.landing_page_views)}
-                </td>
-                <td className="px-4 py-3 text-right text-slate-700 whitespace-nowrap">
-                  {formatPct(row.ctr)}
-                </td>
-                <td className="px-4 py-3 text-right text-slate-700 whitespace-nowrap">
-                  {row.cpm === null ? "—" : formatMoney(row.cpm, currency)}
-                </td>
-                <td className="px-4 py-3 text-right text-slate-700 whitespace-nowrap">
-                  {row.cpc === null ? "—" : formatMoney(row.cpc, currency)}
-                </td>
+                {isVisible("spend") && (
+                  <td className="px-4 py-3 text-right font-medium text-slate-900 whitespace-nowrap">
+                    {formatMoney(row.spend, currency)}
+                  </td>
+                )}
+                {isVisible("budget") && (
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                    <BudgetCell
+                      dailyBudget={row.daily_budget}
+                      lifetimeBudget={row.lifetime_budget}
+                      isCbo={row.is_cbo}
+                      currency={currency}
+                    />
+                  </td>
+                )}
+                {isVisible("impressions") && (
+                  <td className="px-4 py-3 text-right text-slate-700 whitespace-nowrap">
+                    {formatNumber(row.impressions)}
+                  </td>
+                )}
+                {isVisible("clicks") && (
+                  <td className="px-4 py-3 text-right text-slate-700 whitespace-nowrap">
+                    {formatNumber(row.clicks)}
+                  </td>
+                )}
+                {isVisible("reach") && (
+                  <td className="px-4 py-3 text-right text-slate-700 whitespace-nowrap">
+                    {formatNumber(row.reach)}
+                  </td>
+                )}
+                {isVisible("leads") && (
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                    {row.leads === null ? (
+                      <span className="text-slate-400">—</span>
+                    ) : (
+                      <span className="font-medium text-indigo-700">
+                        {formatNumber(row.leads)}
+                      </span>
+                    )}
+                  </td>
+                )}
+                {isVisible("cost_per_lead") && (
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                    {row.cost_per_lead === null ? (
+                      <span className="text-slate-400">—</span>
+                    ) : (
+                      <span className="font-medium text-emerald-700">
+                        {formatMoney(row.cost_per_lead, currency)}
+                      </span>
+                    )}
+                  </td>
+                )}
+                {isVisible("purchases") && (
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                    {row.purchases === null ? (
+                      <span className="text-slate-400">—</span>
+                    ) : (
+                      <span className="font-medium text-indigo-700">
+                        {formatNumber(row.purchases)}
+                      </span>
+                    )}
+                  </td>
+                )}
+                {isVisible("purchase_value") && (
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                    {row.purchase_value === null ? (
+                      <span className="text-slate-400">—</span>
+                    ) : (
+                      <span className="font-medium text-emerald-700">
+                        {formatMoney(row.purchase_value, currency)}
+                      </span>
+                    )}
+                  </td>
+                )}
+                {isVisible("roas") && (
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                    {row.roas === null ? (
+                      <span className="text-slate-400">—</span>
+                    ) : (
+                      <span className={`font-medium ${row.roas >= 2 ? "text-emerald-700" : "text-amber-600"}`}>
+                        {`${row.roas.toFixed(2)}x`}
+                      </span>
+                    )}
+                  </td>
+                )}
+                {isVisible("landing_page_views") && (
+                  <td className="px-4 py-3 text-right text-slate-700 whitespace-nowrap">
+                    {row.landing_page_views === null ? (
+                      <span className="text-slate-400">—</span>
+                    ) : formatNumber(row.landing_page_views)}
+                  </td>
+                )}
+                {isVisible("ctr") && (
+                  <td className="px-4 py-3 text-right text-slate-700 whitespace-nowrap">
+                    {formatPct(row.ctr)}
+                  </td>
+                )}
+                {isVisible("cpm") && (
+                  <td className="px-4 py-3 text-right text-slate-700 whitespace-nowrap">
+                    {row.cpm === null ? "—" : formatMoney(row.cpm, currency)}
+                  </td>
+                )}
+                {isVisible("cpc") && (
+                  <td className="px-4 py-3 text-right text-slate-700 whitespace-nowrap">
+                    {row.cpc === null ? "—" : formatMoney(row.cpc, currency)}
+                  </td>
+                )}
               </tr>
             ))}
+            {sorted.length === 0 && (
+              <tr>
+                <td
+                  colSpan={2 + visibleCols.size}
+                  className="px-4 py-10 text-center text-sm text-slate-500"
+                >
+                  No results match your search or filter.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Resolves UTM parameters from an opt-in event to Meta entity IDs.
  *
  * Two resolution paths:
@@ -63,16 +63,28 @@ function looksLikeMetaId(value: string): boolean {
 /**
  * Decomposes a utm_content value into its adset name prefix and country code.
  *
+ * Normalises the old dash-separated format to underscores before decomposing,
+ * allowing `GT1-Apple-MY` (legacy) to be treated the same as `GT1_Apple_MY`.
+ * Normalisation only applies when there are no underscores in the raw value.
+ *
  * Example:
- *   "GT1_Apple_FB_MY" → { prefix: "GT1_Apple_FB", country: "MY" }
- *   "GT1_Apple_FB_SG" → { prefix: "GT1_Apple_FB", country: "SG" }
- *   "organic"         → { prefix: "organic", country: null }
+ *   "GT1_Apple_FB_MY"  → { prefix: "GT1_Apple_FB", country: "MY" }
+ *   "GT1_Apple_FB_SG"  → { prefix: "GT1_Apple_FB", country: "SG" }
+ *   "GT1-Apple-MY"     → normalised → { prefix: "GT1_Apple",    country: "MY" }
+ *   "GT1-Ecom-MY"      → normalised → { prefix: "GT1_Ecom",     country: "MY" }
+ *   "organic"          → { prefix: "organic", country: null }
  */
 function decomposeUtmContent(
   utmContent: string
 ): { prefix: string; country: string | null } {
-  const raw = utmContent.trim();
+  let raw = utmContent.trim();
   if (raw === "") return { prefix: "", country: null };
+
+  // Legacy UTMs used dashes: "GT1-Apple-MY". Normalise to underscores so the
+  // same prefix-matching logic handles both old and new naming conventions.
+  if (!raw.includes("_") && raw.includes("-")) {
+    raw = raw.replaceAll("-", "_");
+  }
 
   const parts = raw.split("_");
   if (parts.length < 2) return { prefix: raw, country: null };

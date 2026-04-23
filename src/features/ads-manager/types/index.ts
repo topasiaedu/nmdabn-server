@@ -59,6 +59,20 @@ export interface AdsManagerRow {
   roas: number | null;
   /** Total landing page view events, or null if not tracked. */
   landing_page_views: number | null;
+  /**
+   * Budget set on this entity in the account currency.
+   * - Campaign: campaign-level budget (CBO), or null when ABO.
+   * - Ad set: ad-set-level budget (ABO), or null when parent is CBO.
+   * - Ad: always null.
+   */
+  daily_budget: number | null;
+  /** Lifetime (total) budget, mutually exclusive with daily_budget. */
+  lifetime_budget: number | null;
+  /**
+   * True when the campaign uses Campaign Budget Optimisation (CBO).
+   * Null at adset and ad levels (not applicable).
+   */
+  is_cbo: boolean | null;
 }
 
 /** Rolled-up totals shown in the KPI bar above the table. */

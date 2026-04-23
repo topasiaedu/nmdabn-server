@@ -1106,8 +1106,11 @@ export type Database = {
       meta_campaigns: {
         Row: {
           created_at: string
+          daily_budget: number | null
           id: string
           integration_account_id: string
+          is_cbo: boolean
+          lifetime_budget: number | null
           name: string | null
           objective: string | null
           raw_json: Json | null
@@ -1116,8 +1119,11 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          daily_budget?: number | null
           id: string
           integration_account_id: string
+          is_cbo?: boolean
+          lifetime_budget?: number | null
           name?: string | null
           objective?: string | null
           raw_json?: Json | null
@@ -1126,8 +1132,11 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          daily_budget?: number | null
           id?: string
           integration_account_id?: string
+          is_cbo?: boolean
+          lifetime_budget?: number | null
           name?: string | null
           objective?: string | null
           raw_json?: Json | null
