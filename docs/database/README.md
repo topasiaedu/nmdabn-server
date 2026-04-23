@@ -22,6 +22,8 @@ Run them in order in your Postgres host (e.g. Supabase SQL Editor) when you adop
 | [migrations/025_meta_ads_mirror.sql](migrations/025_meta_ads_mirror.sql) | **Meta Ads:** `meta_ads` provider enum; `meta_campaigns`, `meta_insights`, `project_meta_ad_accounts`; `webinar_runs.spend_date_from` / `spend_date_to`; partial unique index on `integration_accounts` for OAuth upserts |
 | [migrations/026_meta_spend_attribution.sql](migrations/026_meta_spend_attribution.sql) | **Meta Ads:** `ad_spend_run_attribution` + `recompute_meta_spend_attribution(project_id)` for date-overlap spend |
 | [migrations/027_agency_rpc_with_spend.sql](migrations/027_agency_rpc_with_spend.sql) | **Agency RPCs:** `get_agency_stats` / `get_agency_all_runs` read attributed Meta spend + CPL/CPA |
+| [migrations/033_page_events.sql](migrations/033_page_events.sql) | **Tracking pixel:** `page_events` first-party browser events (`/api/track`, `public/tracker.js`) |
+| [migrations/034_journey_events_ghl_webhook_unique.sql](migrations/034_journey_events_ghl_webhook_unique.sql) | **`journey_events`:** partial unique index for ContactCreate webhook optin upserts (`ghl_webhook`) |
 
 Add new files as `011_…`, etc.
 

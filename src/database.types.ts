@@ -1578,6 +1578,83 @@ export type Database = {
           },
         ]
       }
+      page_events: {
+        Row: {
+          element_tag: string | null
+          element_text: string | null
+          event_type: string
+          fbclid: string | null
+          ghl_contact_id: string | null
+          id: string
+          occurred_at: string
+          payload: Json
+          project_id: string
+          referrer: string | null
+          scroll_depth: number | null
+          session_id: string
+          url: string | null
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          utm_term: string | null
+          x: number | null
+          y: number | null
+        }
+        Insert: {
+          element_tag?: string | null
+          element_text?: string | null
+          event_type: string
+          fbclid?: string | null
+          ghl_contact_id?: string | null
+          id?: string
+          occurred_at?: string
+          payload?: Json
+          project_id: string
+          referrer?: string | null
+          scroll_depth?: number | null
+          session_id: string
+          url?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+          x?: number | null
+          y?: number | null
+        }
+        Update: {
+          element_tag?: string | null
+          element_text?: string | null
+          event_type?: string
+          fbclid?: string | null
+          ghl_contact_id?: string | null
+          id?: string
+          occurred_at?: string
+          payload?: Json
+          project_id?: string
+          referrer?: string | null
+          scroll_depth?: number | null
+          session_id?: string
+          url?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+          x?: number | null
+          y?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "page_events_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       projects: {
         Row: {
           created_at: string | null

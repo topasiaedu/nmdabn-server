@@ -14,6 +14,7 @@ import {
   runGhlOrderSyncForOrderId,
 } from "@/services/ghl-webhook-sync";
 import { assignNextWebinarRunForContactId } from "@/services/assign-webinar-run";
+import { createOptinJourneyEventForContact } from "@/services/ghl-contact-optin-journey";
 
 /** Event types that include a contact id and should refresh normalized tables. */
 const CONTACT_UPSERT_TYPES = new Set([
@@ -309,6 +310,9 @@ export async function processGhlWebhookPost(
       try {
         await runGhlContactSyncForContactId(contactId, credentials);
         await assignNextWebinarRunForContactId(contactId);
+        if (eventType === "ContactCreate") {
+          await createOptinJourneyEventForContact(contactId);
+        }
       } catch (e) {
         console.error(`GHL webhook sync/assign failed for ${contactId}:`, e);
       }
