@@ -91,6 +91,16 @@ function decomposeUtmContent(
 /**
  * Searches a pre-loaded adset array for the best name match.
  * Used by both the in-memory path and the DB path.
+ *
+ * Matching strategy (in order):
+ *  1. Full prefix match (e.g. "GT1_Apple_FB").
+ *  2. If zero candidates, shorten the prefix by one "_" segment and retry once.
+ *     This handles cases where the adset name embeds an audience qualifier between
+ *     the identifier and the platform suffix — e.g.:
+ *       utm_content = "GT1_lookalike_FB_MY"  → prefix = "GT1_lookalike_FB"
+ *       adset name  = "GT1_Lookalike 1-3%_FB_Video_sharma (MY)"
+ *     The segment "_FB" is appended to the UTM but the adset has extra text between
+ *     "lookalike" and "_FB", so the full prefix fails but "GT1_lookalike" matches.
  */
 function findBestAdsetMatch(
   adsets: Array<{ id: string; name: string | null; campaign_id: string }>,
@@ -105,18 +115,38 @@ function findBestAdsetMatch(
   const { prefix, country } = decomposeUtmContent(content);
   if (prefix === "") return EMPTY_RESULT;
 
-  const prefixLower = prefix.toLowerCase();
   const campaignLower = campaign.toLowerCase();
 
-  const candidates = adsets.filter((adset) => {
-    const nameLower = (adset.name ?? "").toLowerCase();
-    const hasPrefix = nameLower.includes(prefixLower);
-    const hasAngle = nameLower.includes(campaignLower);
-    const hasCountry =
-      country === null ||
-      nameLower.includes(`(${country.toLowerCase()})`);
-    return hasPrefix && hasAngle && hasCountry;
-  });
+  /**
+   * Filters adsets that contain all three signals: prefix, angle, and country.
+   * The country check is loose (`(my & sg)` satisfies a `my` filter).
+   */
+  function filterCandidates(
+    searchPrefix: string
+  ): Array<{ id: string; name: string | null; campaign_id: string }> {
+    const pfxLower = searchPrefix.toLowerCase();
+    return adsets.filter((adset) => {
+      const nameLower = (adset.name ?? "").toLowerCase();
+      const hasPrefix = nameLower.includes(pfxLower);
+      const hasAngle = nameLower.includes(campaignLower);
+      const hasCountry =
+        country === null || nameLower.includes(country.toLowerCase());
+      return hasPrefix && hasAngle && hasCountry;
+    });
+  }
+
+  let candidates = filterCandidates(prefix);
+
+  // Fallback: drop the last "_"-separated segment of the prefix and retry once.
+  // Handles cases like "GT1_lookalike_FB" → "GT1_lookalike" matching
+  // "GT1_Lookalike 1-3%_FB_Video_*" where an audience qualifier sits in the name.
+  if (candidates.length === 0) {
+    const lastUnderscore = prefix.lastIndexOf("_");
+    if (lastUnderscore > 0) {
+      const shorterPrefix = prefix.slice(0, lastUnderscore);
+      candidates = filterCandidates(shorterPrefix);
+    }
+  }
 
   if (candidates.length === 0) return EMPTY_RESULT;
 
