@@ -142,23 +142,24 @@
   var queue = [];
 
   /**
-   * Sends JSON to the collector (beacon preferred for unload reliability).
+   * Sends JSON to the collector using fetch with credentials omitted.
+   *
+   * navigator.sendBeacon forces credentials mode "include" which is
+   * incompatible with a wildcard CORS policy. fetch + credentials:"omit" +
+   * keepalive:true provides the same "survives page unload" guarantee without
+   * triggering the CORS credentials conflict.
    *
    * @param {string} jsonBody
    */
   function sendPayload(jsonBody) {
-    if (navigator.sendBeacon) {
-      var blob = new Blob([jsonBody], { type: "application/json" });
-      navigator.sendBeacon(ENDPOINT, blob);
-      return;
-    }
     fetch(ENDPOINT, {
       method: "POST",
       body: jsonBody,
       headers: { "Content-Type": "application/json" },
+      credentials: "omit",
       keepalive: true,
     }).catch(function () {
-      /* ignore */
+      /* ignore network errors */
     });
   }
 
