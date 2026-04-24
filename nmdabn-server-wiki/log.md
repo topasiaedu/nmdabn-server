@@ -249,3 +249,23 @@ Append-only timeline. **New entries go at the bottom.** Heading format: `## [YYY
 - Concept updated: [[Supabase-GHL-Mirror]] (migration 024 row in manifest)
 - Concept updated: [[Zoom-Integration-Architecture]] (segment ingest status wording)
 - Updated: [[index]] (two raw rows, new source row, refreshed concept/entity summaries)
+
+## [2026-04-22] ingest | Custom tracking pixel design + agent prompts
+
+- Raw: `raw/sources/2026-04-22-custom-tracking-pixel-design.md` -- pixel architecture, `page_events` table, `POST /api/track` collector, ContactCreate hook, GHL setup, heatmap Phase 2 note.
+- Raw: `raw/sources/2026-04-22-custom-tracking-pixel-agent-prompts.md` -- three Gemini agent prompts (DB/types/API, tracker.js, GHL ContactCreate hook); all implemented.
+- Source pages added: [[Custom-Tracking-Pixel-Design]], [[Custom-Tracking-Pixel-Agent-Prompts]]
+- Concept pages added: [[First-Party-Tracking-Pixel]], [[GHL-ContactCreate-Optin-Hook]]
+- Concept updated: [[Buyer-Journey-Event-Store]] (opt-in events, Meta attribution columns, page_events companion, ingest paths)
+- Updated: [[index]]
+
+## [2026-04-22] ingest | Meta Ads Manager implementation record (migrations 025-035)
+
+- Raw: `raw/sources/2026-04-22-meta-ads-manager-implementation.md` -- new raw source documenting entire Meta Ads Manager feature, lead attribution pipeline, budget/CBO, status display, CSV optimization, GHL webhook opt-in.
+- Source page added: [[Meta-Ads-Manager-Implementation]]
+- Concept pages added: [[Meta-Ads-Manager-Dashboard]], [[Meta-Ads-Sync]], [[Lead-Attribution-Pipeline]]
+- Entity added: [[Meta-Ads]]; updated `entities/README.md`
+- Concept updated: [[Supabase-GHL-Mirror]] (migrations 025-035 added to manifest)
+- Concept updated: [[Buyer-Journey-Event-Store]] (Meta attribution columns, GHL webhook opt-in paths)
+- Concept updated: [[Phase-1-Open-Decisions]] (Decision 1 "Ad spend data source" resolved 2026-04-22)
+- Updated: [[index]] (3 new raw rows, 3 new source rows, 5 new concept rows, 1 new entity row, 3 updated concept summaries)

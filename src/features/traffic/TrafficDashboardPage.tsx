@@ -77,6 +77,7 @@ const FALLBACK_AGENCY_KEYS = ["OM", "NM"] as const;
 type OptinImportResponse = {
   imported: number;
   skippedDuplicates: number;
+  attributionUpdated: number;
   skippedInvalid: number;
   errors: Array<{ rowNumber: number; message: string }>;
 };
@@ -174,6 +175,8 @@ function parseOptinResultRecord(r: Record<string, unknown>): OptinImportResponse
     imported: typeof r.imported === "number" ? r.imported : 0,
     skippedDuplicates:
       typeof r.skippedDuplicates === "number" ? r.skippedDuplicates : 0,
+    attributionUpdated:
+      typeof r.attributionUpdated === "number" ? r.attributionUpdated : 0,
     skippedInvalid:
       typeof r.skippedInvalid === "number" ? r.skippedInvalid : 0,
     errors: Array.isArray(r.errors)
@@ -687,8 +690,11 @@ function TrafficInner({ ctx }: TrafficInnerProps): React.ReactElement {
                 </p>
               )}
             <p>
-              Imported <strong>{importSummary.imported}</strong>, skipped
-              duplicates <strong>{importSummary.skippedDuplicates}</strong>,
+              Imported <strong>{importSummary.imported}</strong>,
+              {importSummary.attributionUpdated > 0 && (
+                <> attribution updated <strong>{importSummary.attributionUpdated}</strong>,</>
+              )}
+              {" "}skipped duplicates <strong>{importSummary.skippedDuplicates}</strong>,
               invalid rows <strong>{importSummary.skippedInvalid}</strong>.
             </p>
             <div className="flex flex-wrap gap-2">

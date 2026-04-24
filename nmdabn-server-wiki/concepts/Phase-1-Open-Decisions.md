@@ -7,16 +7,11 @@ Decisions that are unresolved as of 2026-04-13 and block specific steps of [[Pha
 ## Open decision register
 
 ### 1. Ad spend data source
-**Blocks:** Step 6 Agency RPC + Step 8 Agency dashboard UI.
+**Status: RESOLVED 2026-04-22 — Meta Ads API integration shipped.**
 
-The Agency dashboard requires spend figures (CPL, CPA) per agency line per webinar run. The `ghl_orders` + `ghl_invoices` tables capture revenue, but **ad spend (cost)** has no current data source.
+Ad spend is now pulled from the Meta Marketing API via `src/services/meta-ads-sync.ts` and stored in `meta_campaign_insights`, `meta_adset_insights`, `meta_ad_insights`. The `ad_spend_run_attribution` table (migration 026) schema exists for future linkage of spend to webinar runs; not yet populated.
 
-Options:
-- **Manual entry per webinar run** — add a `spend` column (or a spend record table) that operators fill in the admin UI after each run. Simple; no external integration.
-- **Ad platform API import** — pull spend from Meta Ads / Google Ads per campaign / date range. More automated; requires additional integration accounts + OAuth.
-- **Spreadsheet upload** — operator exports from ad platform and uploads CSV; server parses and upserts spend rows.
-
-This must be decided before the Agency RPC or UI is built. A manual entry approach would unblock Phase 1 fastest; ad platform API can be Phase 2.
+~~The Agency dashboard requires spend figures (CPL, CPA) per agency line per webinar run. The `ghl_orders` + `ghl_invoices` tables capture revenue, but **ad spend (cost)** has no current data source.~~ See [[Meta-Ads-Manager-Dashboard]] and [[Meta-Ads-Sync]].
 
 ---
 
@@ -68,6 +63,7 @@ Option B is more correct but can be slow for large contact lists. Option A is fa
 | Per-project Zoom accounts | `projects.zoom_integration_account_id` FK to `integration_accounts` | 2026-04-13 |
 | Attendance storage | `journey_events` (not a separate `zoom_participants` table) | 2026-04-13 |
 | `zoom_source_type` field | Required on `webinar_runs` when `zoom_meeting_id` is set; `CHECK IN ('meeting', 'webinar')` | 2026-04-13 |
+| Ad spend data source | Meta Ads API integration shipped (migrations 025–031); `ad_spend_run_attribution` schema ready for webinar run linkage | 2026-04-22 |
 
 ## Related
 

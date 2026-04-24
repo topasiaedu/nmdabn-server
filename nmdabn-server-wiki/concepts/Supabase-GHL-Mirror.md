@@ -1,6 +1,6 @@
 # Supabase GHL mirror
 
-Normalized **GoHighLevel** contact and billing data mirrored into Postgres (e.g. Supabase). Webhooks and npm sync scripts **upsert** into these tables.
+Normalized **GoHighLevel** contact and billing data mirrored into Postgres (e.g. Supabase). Webhooks and npm sync scripts **upsert** into these tables. Updated 2026-04-22 to include Meta Ads and tracking pixel migrations.
 
 ## Canonical DDL
 
@@ -21,6 +21,17 @@ All migration files live in the **main repo** (not in this vault):
 | `020_all_runs_rpcs.sql` | Four all-runs RPCs: `get_traffic_all_runs`, `get_showup_all_runs`, `get_buyer_behavior_all_runs`, `get_agency_all_runs` (see [[All-Runs-Column-Table]]) |
 | `021_showup_rpc_fallback.sql` | Replaces `get_showup_all_runs` with fallback for empty breakdown fields |
 | `024_zoom_attendance_segments_and_app_contacts.sql` | **`zoom_attendance_segments`**; **`ghl_contacts`** `is_app_only` / `app_only_project_id` for Zoom app-only identities ([[Zoom-Attendance-Segments-And-Journey]]) |
+| `025_meta_ads_mirror.sql` | **`meta_campaigns`**, **`project_meta_ad_accounts`** linking table; Meta ad account FK chain |
+| `026_meta_spend_attribution.sql` | **`ad_spend_run_attribution`** — links ad spend to webinar runs (future) |
+| `027_agency_rpc_with_spend.sql` | Updates agency all-runs RPC to include ad spend |
+| `028_meta_adsets_ads_insights.sql` | **`meta_adsets`**, **`meta_ads`**, **`meta_adset_insights`**, **`meta_ad_insights`** |
+| `029_insight_leads_column.sql` | Adds `leads` to all Meta insight tables |
+| `030_fix_meta_fk_no_cascade.sql` | Changes Meta FK constraints to `ON DELETE RESTRICT` (prevents cascade-delete on account disconnect) |
+| `031_pixel_event_columns.sql` | Adds `landing_page_views`, `purchases`, `purchase_value` to Meta insight tables |
+| `032_journey_events_meta_attribution.sql` | Adds `meta_adset_id`, `meta_campaign_id`, `meta_ad_id`, `meta_attribution_method` to `journey_events` |
+| `033_page_events.sql` | **`page_events`** table for first-party tracking pixel (see [[First-Party-Tracking-Pixel]]) |
+| `034_journey_events_ghl_webhook_unique.sql` | Unique index on `journey_events(contact_id, event_type, source_system)` for GHL webhook optin idempotency |
+| `035_meta_campaigns_budget.sql` | Adds `daily_budget`, `lifetime_budget`, `is_cbo` to `meta_campaigns` |
 
 ## Dual layer (see [[SQL-First-Data-Layer]])
 
@@ -31,6 +42,7 @@ All migration files live in the **main repo** (not in this vault):
 
 - **Bulk:** `npm run sync-ghl-contacts`, `npm run sync-ghl-orders-invoices` (env in `../.env.example`).
 - **Incremental:** `POST /api/webhooks/ghl` → same scripts, single-id mode ([[GHL-Webhook-Pipeline]]).
+- **Meta Ads:** manual Sync button in Ads Manager dashboard → `POST /api/actions/sync/meta`.
 
 ## Types
 
@@ -40,4 +52,6 @@ Regenerate `../src/database.types.ts` when the live schema changes (project-spec
 
 - [[GHL-Webhooks]]
 - [[GHL-Sync-Operations]]
+- [[Meta-Ads-Sync]]
+- [[First-Party-Tracking-Pixel]]
 - `../docs/data-sync-principles.md`

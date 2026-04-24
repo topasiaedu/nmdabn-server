@@ -17,9 +17,21 @@
  *   node --env-file=.env scripts/backfill-optin-meta-attribution.mjs \
  *     --project-id=<UUID> --apply
  *
+ * Target only a recent date range (faster — skips old history):
+ *   node --env-file=.env scripts/backfill-optin-meta-attribution.mjs \
+ *     --project-id=<UUID> --from-date=2026-04-24 --apply
+ *
+ * Also upgrade rows that were name-matched but have a numeric utm_source
+ * (populates meta_ad_id for more precise ad-level attribution):
+ *   node --env-file=.env scripts/backfill-optin-meta-attribution.mjs \
+ *     --project-id=<UUID> --upgrade-ad-id --apply
+ *
  * Options:
  *   --project-id=UUID   Required. The project whose journey_events to process.
  *   --apply             Write updates to Supabase (default: dry run).
+ *   --from-date=DATE    Only process rows with occurred_at >= DATE (YYYY-MM-DD, KL time).
+ *   --upgrade-ad-id     Also re-process name_match rows whose utm_source is a numeric
+ *                       Meta ad ID, upgrading them to ad_id attribution.
  *   --batch-size=N      journey_events rows per SELECT page (default 500).
  *
  * Env:
@@ -42,6 +54,23 @@ const args = Object.fromEntries(
 const PROJECT_ID = /** @type {string | undefined} */ (args["project-id"]);
 const APPLY = args["apply"] === true || args["apply"] === "true";
 const BATCH_SIZE = parseInt(String(args["batch-size"] ?? "500"), 10);
+/**
+ * Optional ISO date (YYYY-MM-DD). When set, only rows on or after this date
+ * (in KL time, UTC+8) are processed. Useful for targeting a specific import
+ * batch without waiting through the entire history.
+ *
+ * Example: --from-date=2026-04-24
+ */
+const FROM_DATE = /** @type {string | undefined} */ (args["from-date"]);
+/**
+ * When set, also re-processes rows that already have a meta_adset_id resolved
+ * via name_match but have no meta_ad_id yet AND whose utm_source is a numeric
+ * Meta ad ID. This upgrades those rows to the more precise ad_id attribution
+ * method and populates meta_ad_id.
+ *
+ * Example: --upgrade-ad-id
+ */
+const UPGRADE_AD_ID = args["upgrade-ad-id"] === true || args["upgrade-ad-id"] === "true";
 
 if (!PROJECT_ID) {
   console.error("Error: --project-id=UUID is required.");
@@ -133,7 +162,8 @@ function decomposeUtmContent(utmContent) {
   const parts = raw.split("_");
   if (parts.length < 2) return { prefix: raw, country: null };
   const last = parts[parts.length - 1];
-  if (/^[A-Z]{2,3}$/.test(last)) {
+  // Accept 2-3 letter codes joined by "&" e.g. "MY", "SG", "MY&SG".
+  if (/^[A-Z]{2,3}([&][A-Z]{2,3})*$/.test(last)) {
     return { prefix: parts.slice(0, -1).join("_"), country: last };
   }
   return { prefix: raw, country: null };
@@ -156,32 +186,47 @@ function matchAdsetByName(utmContent, utmCampaign, adsets) {
   const campaignLower = campaign.toLowerCase();
 
   /**
+   * Returns true when the adset name satisfies the country filter.
+   * Combined codes e.g. "MY&SG" match if the name includes ANY individual code.
+   * @param {string} nameLower
+   */
+  function matchesCountry(nameLower) {
+    if (country === null) return true;
+    if (country.includes("&")) {
+      return country.split("&").some((c) => nameLower.includes(c.toLowerCase()));
+    }
+    return nameLower.includes(country.toLowerCase());
+  }
+
+  /**
    * Filters adsets containing prefix + angle + country.
-   * Country check is loose so "(MY & SG)" satisfies a "MY" filter.
    * @param {string} searchPrefix
    */
   function filterCandidates(searchPrefix) {
     const pfxLower = searchPrefix.toLowerCase();
     return adsets.filter((adset) => {
       const nameLower = (adset.name ?? "").toLowerCase();
-      const hasPrefix = nameLower.includes(pfxLower);
-      const hasAngle = nameLower.includes(campaignLower);
-      const hasCountry =
-        country === null || nameLower.includes(country.toLowerCase());
-      return hasPrefix && hasAngle && hasCountry;
+      return (
+        nameLower.includes(pfxLower) &&
+        nameLower.includes(campaignLower) &&
+        matchesCountry(nameLower)
+      );
     });
   }
 
+  // Try progressively shorter prefixes until we find candidates or exhaust options.
+  // Stop at 2 segments minimum — single-segment prefixes are too broad.
   let candidates = filterCandidates(prefix);
+  let shortenedPrefix = prefix;
 
-  // Fallback: drop the last "_" segment and retry once.
-  // Handles "GT1_lookalike_FB" → "GT1_lookalike" matching
-  // "GT1_Lookalike 1-3%_FB_Video_*".
-  if (candidates.length === 0) {
-    const lastUnderscore = prefix.lastIndexOf("_");
-    if (lastUnderscore > 0) {
-      candidates = filterCandidates(prefix.slice(0, lastUnderscore));
-    }
+  while (candidates.length === 0) {
+    const lastUnderscore = shortenedPrefix.lastIndexOf("_");
+    if (lastUnderscore <= 0) break;
+    const newPrefix = shortenedPrefix.slice(0, lastUnderscore);
+    // Stop once down to a single-segment prefix (no underscore left).
+    if (!newPrefix.includes("_")) break;
+    shortenedPrefix = newPrefix;
+    candidates = filterCandidates(shortenedPrefix);
   }
 
   if (candidates.length === 0) return null;
@@ -198,7 +243,10 @@ function matchAdsetByName(utmContent, utmCampaign, adsets) {
       bName.includes(`_${campaignLower}(`);
     if (aExact && !bExact) return -1;
     if (!aExact && bExact) return 1;
-    return aName.localeCompare(bName);
+    const nameCmp = aName.localeCompare(bName);
+    if (nameCmp !== 0) return nameCmp;
+    // Tiebreak: prefer the larger (newer) adset ID — newer adsets are active.
+    return b.id.localeCompare(a.id);
   });
 
   const best = candidates[0];
@@ -211,9 +259,11 @@ function matchAdsetByName(utmContent, utmCampaign, adsets) {
 
 async function main() {
   console.log(`\n=== Backfill Meta Attribution for journey_events ===`);
-  console.log(`Project  : ${PROJECT_ID}`);
-  console.log(`Mode     : ${APPLY ? "APPLY (writes to DB)" : "DRY RUN (no writes)"}`);
-  console.log(`Batch    : ${BATCH_SIZE} rows per page\n`);
+  console.log(`Project      : ${PROJECT_ID}`);
+  console.log(`Mode         : ${APPLY ? "APPLY (writes to DB)" : "DRY RUN (no writes)"}`);
+  console.log(`Batch        : ${BATCH_SIZE} rows per page`);
+  if (FROM_DATE) console.log(`From date    : ${FROM_DATE} (KL time, UTC+8)`);
+  console.log(`Upgrade ad_id: ${UPGRADE_AD_ID ? "yes — also upgrades name_match rows whose utm_source is a numeric ad ID" : "no"}\n`);
 
   const integrationAccountIds = await loadIntegrationAccountIds();
   console.log(`Linked Meta accounts: ${integrationAccountIds.join(", ")}\n`);
@@ -227,11 +277,12 @@ async function main() {
   // Counts
   let totalProcessed = 0;
   let matched = 0;
+  let upgraded = 0;
   let unmatched = 0;
   let skippedAlreadySet = 0;
   let errors = 0;
 
-  /** @type {Array<{id: string, occurred_at: string, utm_content: string, utm_campaign: string, utm_source: string, adset_name: string, method: string}>} */
+  /** @type {Array<{id: string, occurred_at: string, utm_content: string, utm_campaign: string, utm_source: string, adset_name: string, method: string, was_upgrade: boolean}>} */
   const matchLog = [];
   /** @type {Array<{id: string, utm_content: string, utm_campaign: string, utm_source: string}>} */
   const unmatchedLog = [];
@@ -243,14 +294,22 @@ async function main() {
     const from = page * BATCH_SIZE;
     const to = from + BATCH_SIZE - 1;
 
-    const { data: events, error } = await supabase
+    // Cover both CSV imports ("manual") and GHL webhook opt-ins ("ghl_webhook").
+    let query = supabase
       .from("journey_events")
-      .select("id, occurred_at, meta_adset_id, payload")
+      .select("id, occurred_at, meta_adset_id, meta_ad_id, payload")
       .eq("project_id", PROJECT_ID)
       .eq("event_type", "optin")
-      .eq("source_system", "manual")
+      .in("source_system", ["manual", "ghl_webhook"])
       .range(from, to)
       .order("occurred_at", { ascending: true });
+
+    // Optional date filter: only process rows from this date onward (KL time).
+    if (FROM_DATE) {
+      query = query.gte("occurred_at", `${FROM_DATE}T00:00:00+08:00`);
+    }
+
+    const { data: events, error } = await query;
 
     if (error) throw new Error(`Failed to fetch journey_events: ${error.message}`);
     if (!events || events.length === 0) { hasMore = false; break; }
@@ -258,21 +317,31 @@ async function main() {
     for (const ev of events) {
       totalProcessed += 1;
 
-      // Skip rows that already have a resolution.
-      if (ev.meta_adset_id !== null && ev.meta_adset_id !== undefined) {
+      const alreadyHasAdset = ev.meta_adset_id !== null && ev.meta_adset_id !== undefined;
+      const alreadyHasAdId = ev.meta_ad_id !== null && ev.meta_ad_id !== undefined;
+
+      const payload = ev.payload ?? {};
+      const utmSource = String(payload["utm_source"] ?? "").trim();
+
+      // Determine whether to process this row:
+      //   - Unattributed rows (meta_adset_id IS NULL) are always processed.
+      //   - Rows with adset but no ad_id are processed only when --upgrade-ad-id
+      //     is set AND utm_source looks like a numeric Meta ID.
+      const isUpgradeCandidate =
+        UPGRADE_AD_ID && alreadyHasAdset && !alreadyHasAdId && looksLikeMetaId(utmSource);
+
+      if (alreadyHasAdset && !isUpgradeCandidate) {
         skippedAlreadySet += 1;
         continue;
       }
 
-      const payload = ev.payload ?? {};
-      const utmSource = String(payload["utm_source"] ?? "").trim();
       const utmContent = String(payload["utm_content"] ?? "").trim();
       const utmCampaign = String(payload["utm_campaign"] ?? "").trim();
 
       let resolution = null;
       let method = null;
 
-      // Path 1: ad_id
+      // Path 1: utm_source is a numeric Meta ad ID — resolve via adsMap.
       if (looksLikeMetaId(utmSource)) {
         const adRow = adsMap.get(utmSource);
         if (adRow) {
@@ -285,7 +354,7 @@ async function main() {
         }
       }
 
-      // Path 2: name_match
+      // Path 2: name-match using utm_content + utm_campaign against adset names.
       if (resolution === null) {
         const nameResult = matchAdsetByName(utmContent, utmCampaign, adsets);
         if (nameResult !== null) {
@@ -299,7 +368,12 @@ async function main() {
       }
 
       if (resolution !== null) {
-        matched += 1;
+        if (isUpgradeCandidate) {
+          upgraded += 1;
+        } else {
+          matched += 1;
+        }
+
         const adsetName =
           adsets.find((a) => a.id === resolution.meta_adset_id)?.name ?? resolution.meta_adset_id;
 
@@ -311,6 +385,7 @@ async function main() {
           utm_source: utmSource || "(empty)",
           adset_name: adsetName,
           method,
+          was_upgrade: isUpgradeCandidate,
         });
 
         if (APPLY) {
@@ -348,14 +423,13 @@ async function main() {
   // Report
   // ---------------------------------------------------------------------------
 
-  console.log("\n--- MATCHED ---");
-  if (matchLog.length === 0) {
+  console.log("\n--- MATCHED (newly attributed) ---");
+  if (matchLog.filter((m) => !m.was_upgrade).length === 0) {
     console.log("  (none)");
   } else {
-    // Group by adset for readability
     /** @type {Map<string, number>} */
     const byAdset = new Map();
-    for (const m of matchLog) {
+    for (const m of matchLog.filter((m) => !m.was_upgrade)) {
       byAdset.set(m.adset_name, (byAdset.get(m.adset_name) ?? 0) + 1);
     }
     for (const [name, count] of [...byAdset.entries()].sort()) {
@@ -363,9 +437,24 @@ async function main() {
     }
   }
 
+  if (UPGRADE_AD_ID) {
+    console.log("\n--- UPGRADED (name_match → ad_id) ---");
+    if (matchLog.filter((m) => m.was_upgrade).length === 0) {
+      console.log("  (none)");
+    } else {
+      /** @type {Map<string, number>} */
+      const byAdset = new Map();
+      for (const m of matchLog.filter((m) => m.was_upgrade)) {
+        byAdset.set(m.adset_name, (byAdset.get(m.adset_name) ?? 0) + 1);
+      }
+      for (const [name, count] of [...byAdset.entries()].sort()) {
+        console.log(`  [${count.toString().padStart(4)}]  ${name}`);
+      }
+    }
+  }
+
   if (unmatchedLog.length > 0) {
     console.log("\n--- UNMATCHED (review these manually) ---");
-    // Group by (utm_content, utm_campaign)
     /** @type {Map<string, number>} */
     const byUtm = new Map();
     for (const u of unmatchedLog) {
@@ -378,16 +467,18 @@ async function main() {
   }
 
   console.log("\n--- SUMMARY ---");
-  console.log(`  Total processed   : ${totalProcessed}`);
-  console.log(`  Already had meta  : ${skippedAlreadySet}`);
-  console.log(`  Matched           : ${matched}`);
-  console.log(`  Unmatched         : ${unmatched}`);
-  if (errors > 0) console.log(`  DB update errors  : ${errors}`);
+  console.log(`  Total processed    : ${totalProcessed}`);
+  console.log(`  Already had meta   : ${skippedAlreadySet}`);
+  console.log(`  Newly matched      : ${matched}`);
+  if (UPGRADE_AD_ID) console.log(`  Upgraded to ad_id  : ${upgraded}`);
+  console.log(`  Unmatched          : ${unmatched}`);
+  if (errors > 0) console.log(`  DB update errors   : ${errors}`);
 
-  if (!APPLY && matched > 0) {
-    console.log(`\nDry run complete. Re-run with --apply to write ${matched} update(s) to the database.`);
+  const totalWrites = matched + upgraded;
+  if (!APPLY && totalWrites > 0) {
+    console.log(`\nDry run complete. Re-run with --apply to write ${totalWrites} update(s) to the database.`);
   } else if (APPLY) {
-    console.log(`\nDone. ${matched - errors} event(s) updated.`);
+    console.log(`\nDone. ${totalWrites - errors} event(s) updated.`);
   }
 }
 

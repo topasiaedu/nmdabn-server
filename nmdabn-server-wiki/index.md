@@ -39,6 +39,9 @@
 | [2026-04-13-dashboard-architecture-redesign-all-runs.md](raw/sources/2026-04-13-dashboard-architecture-redesign-all-runs.md) | Full implementation record: all-runs column table redesign (15 tasks), migrations 019–021, ProjectContext, ColumnTable, pivot utilities, API rewrites, and backfill bug fix (5,061 contacts). |
 | [2026-04-15-zoom-attendance-segments-journey-design.md](raw/sources/2026-04-15-zoom-attendance-segments-journey-design.md) | **Frozen design (2026-04-15):** `zoom_attendance_segments` + `journey_events` rollup; Show Up binary rule; app-only contacts; audience curve + optional recording scrub UX. Implementation: see `2026-04-16-zoom-attendance-implementation-shipped.md`. |
 | [2026-04-16-zoom-attendance-implementation-shipped.md](raw/sources/2026-04-16-zoom-attendance-implementation-shipped.md) | **Implementation recap:** migration 024, sync behavior (segments upsert + attended rollup upsert), app-only `ghl_contacts`, mirror guard for `nmdapp-` ids, API counters, CLI script parity; prerequisite = apply DDL before sync. |
+| [2026-04-22-custom-tracking-pixel-design.md](raw/sources/2026-04-22-custom-tracking-pixel-design.md) | First-party JS tracking pixel design: `public/tracker.js`, `page_events` table, `POST /api/track` collector, ContactCreate → journey_event hook. Status: implemented. |
+| [2026-04-22-custom-tracking-pixel-agent-prompts.md](raw/sources/2026-04-22-custom-tracking-pixel-agent-prompts.md) | Three Gemini agent prompts used to implement the tracking pixel (DB, tracker.js, GHL hook). All agents completed. |
+| [2026-04-22-meta-ads-manager-implementation.md](raw/sources/2026-04-22-meta-ads-manager-implementation.md) | Meta Ads Manager implementation record: migrations 025–035, Meta sync service, Ads Manager dashboard, lead attribution pipeline, budget/CBO, status/delivery display. |
 
 ### Raw assets (non-markdown, `raw/sources/`)
 
@@ -70,6 +73,9 @@
 | [[Dashboard-Architecture-Redesign-All-Runs]] | Implementation record: all-runs column table, migrations 019–021, ProjectContext, ColumnTable, API rewrites, and backfill bug fix. |
 | [[Zoom-Attendance-Segments-And-Journey-Design]] | Ingest of 2026-04-15 raw: segment table vs journey rollup, Show Up rules, app-only contacts, recording UX scope. Links implementation recap ([[Zoom-Attendance-Implementation-Shipped]]). |
 | [[Zoom-Attendance-Implementation-Shipped]] | Ingest of 2026-04-16 raw: migration 024 shipped, sync + mirror behavior, ops prerequisite. |
+| [[Custom-Tracking-Pixel-Design]] | Ingest of 2026-04-22 design: `tracker.js`, `page_events`, `POST /api/track`, ContactCreate hook. All implemented. |
+| [[Custom-Tracking-Pixel-Agent-Prompts]] | Ingest of 2026-04-22 agent prompts: three Gemini agents used to implement the tracking pixel. All completed. |
+| [[Meta-Ads-Manager-Implementation]] | Ingest of 2026-04-22 implementation record: Meta sync, Ads Manager dashboard, lead attribution, migrations 025–035. |
 
 ## Concepts (`concepts/`)
 
@@ -79,29 +85,34 @@
 | [[GHL-Webhook-Security]] | Ed25519 vs RSA legacy, skip-verify guardrails, failure modes. |
 | [[Express-Raw-Webhook-Body]] | Why raw middleware before verify; proxy rules. |
 | [[GHL-Sync-Operations]] | Bulk npm vs webhook spawn; idempotency; scale / queue notes. |
-| [[Supabase-GHL-Mirror]] | Migrations 001–005 + 019–021 + 024 summary; dual-layer mirror; sync entry points. Updated 2026-04-16. |
+| [[Supabase-GHL-Mirror]] | Migrations 001–035 summary; dual-layer mirror; sync entry points. Updated 2026-04-22. |
 | [[SQL-First-Data-Layer]] | Columns-first philosophy for GHL mirror; link to `data-sync-principles.md`. |
 | [[Documentation-Lineage]] | Current-vs-archive documentation timeline and precedence rule. |
 | [[GHL-Contacts-Sync-Reliability]] | Practical reliability model for contacts sync pagination, retries, and throughput tuning. |
 | [[GHL-Multi-Location-Architecture]] | Target architecture for multi-project/multi-location GHL routing and sync execution. |
 | [[Sales-Tracking-Dashboard-Model]] | Atomic facts + dimensions model for four logical dashboards. |
 | [[Product-Phase-Roadmap]] | Phases 1–3 and engineering enablers (synthesis). |
-| [[Buyer-Journey-Event-Store]] | `journey_events` schema (migration 011) and Zoom path: segments table + attended rollup after migration 024; app-only contacts. Updated 2026-04-16. |
+| [[Buyer-Journey-Event-Store]] | `journey_events` schema + Meta attribution columns (032) + page_events companion (033). Updated 2026-04-22. |
 | [[Zoom-Attendance-Segments-And-Journey]] | Implemented: `zoom_attendance_segments` + `journey_events` attended rollup; app-only contacts; mirror guard. Recording scrub UX still optional. Updated 2026-04-16. |
 | [[Platform-Engineering-Direction]] | Updated 2026-04-13: single Next.js app (no separate Express), one Render service, async webhooks, cron for scheduled syncs. |
 | [[Zoom-Integration-Architecture]] | Zoom S2S OAuth flow, per-project credential chain, token caching, API endpoints, security notes. Updated 2026-04-16 (links to segment+rollup). |
 | [[Webinar-Run-Zoom-Linkage]] | Explicit `zoom_meeting_id` on `webinar_runs`; `zoom_source_type` field; sync service logic. |
 | [[Phase-1-Build-Order]] | Ordered execution plan (Step 1 ✅ done → Migration Step → Steps 2–10) with Next.js consolidation incorporated. |
-| [[Phase-1-Open-Decisions]] | Four unresolved decisions blocking Phase 1 completion: ad spend source, showed denominator, encryption, backfill scope. |
+| [[Phase-1-Open-Decisions]] | Open decisions: 2 still open (Showed denominator, webinar backfill scope). Ad spend resolved 2026-04-22. |
 | [[NextJS-Consolidation-Architecture]] | Full agent implementation guide: file moves, route map, migration patterns (raw body, auth helpers, params, env), merged package.json, Dockerfile. |
-|| [[UI-Design-System]] | Complete visual design language: colour tokens, typography, 4 button variants, input fields, cards, tables with rate badges, KPI stat card anatomy, lucide-react icon map, loading states. |
-|| [[App-Navigation-Structure]] | Global nav bar redesign: sticky 56px header, left zone (wordmark + dashboard tabs with icons), right zone (Setup link + user avatar dropdown with Sign Out). Replaces current NavTabs. |
-|| [[Settings-IA-Redesign]] | Full settings restructure: SettingsShell auth guard component, two-panel sidebar layout, General/Integrations pages, per-project 5-tab layout (Overview/GHL/Zoom/Webinar Runs/Traffic Config). |
-|| [[Dashboard-UX-Patterns]] | ⚠ Partially superseded 2026-04-13: filter bar, run selector, date range removed. KPI cards, empty state hierarchy, pill toggles, page titles remain valid design intent. |
-|| [[All-Runs-Column-Table]] | New dashboard paradigm: all runs as date-labeled columns, ColumnTable component, pivot utilities, all-runs RPCs. Supersedes single-run filtered view. |
-|| [[Project-Context-Global-State]] | ProjectContext: global workspace+project state, localStorage persistence, project selector in nav bar. |
-|| [[Traffic-Breakdown-Fields]] | `traffic_breakdown_fields` JSONB per-project config replacing hardcoded occupation field. Resolution via `ghl_custom_fields`; ShowUp fallback when empty. |
-|| [[Webinar-Run-Contact-Assignment]] | `ghl_contacts.webinar_run_id` assignment mechanics; backfill RPC; bulk sync now auto-backfills. Backfill bug (5,061 contacts with null run_id) found and fixed 2026-04-13. |
+| [[UI-Design-System]] | Complete visual design language: colour tokens, typography, 4 button variants, input fields, cards, tables with rate badges, KPI stat card anatomy, lucide-react icon map, loading states. |
+| [[App-Navigation-Structure]] | Global nav bar redesign: sticky 56px header, left zone (wordmark + dashboard tabs with icons), right zone (Setup link + user avatar dropdown with Sign Out). Replaces current NavTabs. |
+| [[Settings-IA-Redesign]] | Full settings restructure: SettingsShell auth guard component, two-panel sidebar layout, General/Integrations pages, per-project 5-tab layout (Overview/GHL/Zoom/Webinar Runs/Traffic Config). |
+| [[Dashboard-UX-Patterns]] | ⚠ Partially superseded 2026-04-13: filter bar, run selector, date range removed. KPI cards, empty state hierarchy, pill toggles, page titles remain valid design intent. |
+| [[All-Runs-Column-Table]] | New dashboard paradigm: all runs as date-labeled columns, ColumnTable component, pivot utilities, all-runs RPCs. Supersedes single-run filtered view. |
+| [[Project-Context-Global-State]] | ProjectContext: global workspace+project state, localStorage persistence, project selector in nav bar. |
+| [[Traffic-Breakdown-Fields]] | `traffic_breakdown_fields` JSONB per-project config replacing hardcoded occupation field. Resolution via `ghl_custom_fields`; ShowUp fallback when empty. |
+| [[Webinar-Run-Contact-Assignment]] | `ghl_contacts.webinar_run_id` assignment mechanics; backfill RPC; bulk sync now auto-backfills. Backfill bug (5,061 contacts with null run_id) found and fixed 2026-04-13. |
+| [[Meta-Ads-Manager-Dashboard]] | Ads Manager dashboard at Campaign/AdSet/Ad levels; CPL via journey_events overlay; BudgetCell; ADS_OFF status; KL timezone fix. Added 2026-04-22. |
+| [[Meta-Ads-Sync]] | Meta API sync service: campaigns, adsets, ads, insights; effective_status; "Ads off" synthesis; budget parsing; URL encoding fix. Added 2026-04-22. |
+| [[Lead-Attribution-Pipeline]] | UTM → Meta entity ID resolution: ad_id path, name_match path, prefix-shortening fallback, dash normalization, backfill script. Added 2026-04-22. |
+| [[First-Party-Tracking-Pixel]] | `public/tracker.js` IIFE, `page_events` table, `POST /api/track` collector, session management, GHL form opt-in linkage. Added 2026-04-22. |
+| [[GHL-ContactCreate-Optin-Hook]] | ContactCreate webhook → `ghl-contact-optin-journey.ts` → journey_events upsert with Meta attribution; idempotency via migration 034. Added 2026-04-22. |
 
 ## Entities (`entities/`)
 
@@ -110,13 +121,14 @@
 | [entities/README.md](entities/README.md) | Entities folder hub; lists current entity pages. |
 | [[GoHighLevel]] | Vendor / integration entity; surfaces, wiki hub, external doc link. |
 | [[Zoom]] | Webinar vendor; attendance/duration inputs for dashboard and journey; segment + rollup model shipped (see Zoom-Attendance pages). |
+| [[Meta-Ads]] | Meta (Facebook) Ads platform; ad spend, CPL, campaign/adset/ad sync, effective_status, budget. Added 2026-04-22. |
 
 ## Database and migrations (canonical in repo)
 
 DDL is **not** duplicated here. Use:
 
 - `../docs/database/README.md` — how to apply migrations
-- `../docs/database/migrations/*.sql` — ordered SQL
+- `../docs/database/migrations/*.sql` — ordered SQL (001–035 as of 2026-04-22)
 
 Wiki concepts link to these paths; see [[Supabase-GHL-Mirror]].
 

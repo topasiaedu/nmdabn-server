@@ -37,6 +37,7 @@ const IMPORT_CONCURRENCY = 6;
 export type OptinImportResult = {
   imported: number;
   skippedDuplicates: number;
+  attributionUpdated: number;
   skippedInvalid: number;
   errors: Array<{ rowNumber: number; message: string }>;
 };
@@ -85,14 +86,14 @@ function buildImportRowHash(parts: {
   return createHash("sha256").update(canonical).digest("hex");
 }
 
-async function journeyDuplicateExists(
+async function findDuplicateRow(
   supabase: SupabaseClient<Database>,
   projectId: string,
   importRowHash: string
-): Promise<boolean> {
+): Promise<{ rowId: string; metaAdsetId: string | null } | null> {
   const { data, error } = await supabase
     .from("journey_events")
-    .select("id")
+    .select("id, meta_adset_id")
     .eq("project_id", projectId)
     .eq("event_type", "optin")
     .contains("payload", { import_row_hash: importRowHash })
@@ -102,7 +103,8 @@ async function journeyDuplicateExists(
   if (error !== null) {
     throw new Error(`Duplicate check failed: ${error.message}`);
   }
-  return data !== null;
+  if (data === null) return null;
+  return { rowId: data.id, metaAdsetId: data.meta_adset_id };
 }
 
 // ---------------------------------------------------------------------------
@@ -112,8 +114,47 @@ async function journeyDuplicateExists(
 type RowOutcome =
   | { status: "imported" }
   | { status: "skipped_duplicate" }
+  | { status: "attribution_updated" }
   | { status: "skipped_invalid"; message: string }
   | { status: "error"; message: string };
+
+/**
+ * When a duplicate row is detected but has no Meta attribution yet, resolves
+ * and writes the attribution. Returns `"attribution_updated"` on success,
+ * `"skipped_duplicate"` when attribution is already set or no match is found,
+ * or `"error"` if the DB update fails.
+ */
+async function patchAttributionForDuplicate(
+  supabase: SupabaseClient<Database>,
+  rowId: string,
+  metaEntities: PreloadedMetaEntities,
+  row: ParsedLeadSheetRow
+): Promise<RowOutcome> {
+  const metaAttribution = resolveMetaAttributionInMemory(metaEntities, {
+    utmSource: row.utmSource,
+    utmContent: row.utmContent,
+    utmCampaign: row.utmCampaign,
+  });
+
+  if (metaAttribution.meta_adset_id === null) {
+    return { status: "skipped_duplicate" };
+  }
+
+  const { error: updErr } = await supabase
+    .from("journey_events")
+    .update({
+      meta_adset_id: metaAttribution.meta_adset_id,
+      meta_campaign_id: metaAttribution.meta_campaign_id,
+      meta_ad_id: metaAttribution.meta_ad_id,
+      meta_attribution_method: metaAttribution.method,
+    })
+    .eq("id", rowId);
+
+  if (updErr !== null) {
+    return { status: "error", message: updErr.message };
+  }
+  return { status: "attribution_updated" };
+}
 
 async function processOneRow(args: {
   supabase: SupabaseClient<Database>;
@@ -156,8 +197,17 @@ async function processOneRow(args: {
     agencyLine,
   });
 
-  const dup = await journeyDuplicateExists(supabase, projectId, importRowHash);
-  if (dup) return { status: "skipped_duplicate" };
+  const duplicate = await findDuplicateRow(supabase, projectId, importRowHash);
+
+  if (duplicate !== null) {
+    // Row already exists. If it has no Meta attribution yet, resolve and patch
+    // it now — handles re-imports after new adsets are synced or the matching
+    // logic is improved.
+    if (duplicate.metaAdsetId === null) {
+      return patchAttributionForDuplicate(supabase, duplicate.rowId, metaEntities, row);
+    }
+    return { status: "skipped_duplicate" };
+  }
 
   const { firstName, lastName } = splitFullName(row.fullName);
 
@@ -339,6 +389,7 @@ export async function importOptinRowsFromSheet(args: {
       const statusLabel: Record<RowOutcome["status"], string> = {
         imported: "Done — imported",
         skipped_duplicate: "Skipped — duplicate",
+        attribution_updated: "Updated — added Meta attribution",
         skipped_invalid: `Skipped — ${outcome.status === "skipped_invalid" ? outcome.message : ""}`,
         error: `Failed — ${outcome.status === "error" ? outcome.message : ""}`,
       };
@@ -370,6 +421,7 @@ export async function importOptinRowsFromSheet(args: {
   const result: OptinImportResult = {
     imported: 0,
     skippedDuplicates: 0,
+    attributionUpdated: 0,
     skippedInvalid: 0,
     errors: [],
   };
@@ -382,6 +434,8 @@ export async function importOptinRowsFromSheet(args: {
       result.imported += 1;
     } else if (outcome.status === "skipped_duplicate") {
       result.skippedDuplicates += 1;
+    } else if (outcome.status === "attribution_updated") {
+      result.attributionUpdated += 1;
     } else if (outcome.status === "skipped_invalid") {
       result.skippedInvalid += 1;
       result.errors.push({ rowNumber, message: outcome.message });
@@ -395,7 +449,7 @@ export async function importOptinRowsFromSheet(args: {
     current: totalRows,
     sheetRowNumber: 0,
     email: "",
-    message: `Finished — ${result.imported} imported, ${result.skippedDuplicates} duplicate skips, ${result.skippedInvalid} invalid`,
+    message: `Finished — ${result.imported} imported, ${result.attributionUpdated} attribution updated, ${result.skippedDuplicates} duplicate skips, ${result.skippedInvalid} invalid`,
   });
 
   return result;

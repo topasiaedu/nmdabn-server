@@ -355,13 +355,16 @@ async function queryJourneyLeadCounts(
 
   // Select all three ID columns so the row type is concrete and we can
   // index into it via the typed `idColumn` key without any unsafe cast.
+  // Also exclude rows that were tagged as organic traffic — these have
+  // payload->>'utm_campaign' = 'organic' and no valid Meta attribution.
   let baseQuery = supabase
     .from("journey_events")
     .select("meta_campaign_id, meta_adset_id, meta_ad_id")
     .eq("project_id", projectId)
     .eq("event_type", "optin")
     .gte("occurred_at", klFrom)
-    .lte("occurred_at", klTo);
+    .lte("occurred_at", klTo)
+    .not("payload->>utm_campaign", "eq", "organic");
 
   if (parentColumn !== null && filterEntityId !== "") {
     baseQuery = baseQuery.eq(parentColumn, filterEntityId);

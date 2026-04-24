@@ -1,7 +1,7 @@
 /**
  * Resolves UTM parameters from an opt-in event to Meta entity IDs.
  *
- * Two resolution paths:
+ * Two resolution paths (checked in order):
  *
  *  1. **ad_id path** (forward-looking, triggered when utm_source looks like
  *     a numeric Meta ad ID):
@@ -13,12 +13,14 @@
  *     → (meta_adset_id, meta_campaign_id)
  *
  * The marketer's naming convention is:
- *   utm_content  = "{prefix}_{country}"  e.g. "GT1_Apple_FB_MY"
+ *   utm_source   = numeric Meta ad ID  e.g. "120243873565..." (new) OR non-ID string (legacy)
+ *   utm_content  = "{prefix}_{country}"  e.g. "GT1_Apple_FB_MY" or "GT1_Apple_FB_MY&SG"
  *   utm_campaign = "{angle/variant}"     e.g. "insulinresistance"
  *   adset name   = "{prefix}_Video_{angle} ({country})" e.g. "GT1_Apple_FB_Video_insulinresistance (MY)"
  *
- * Going forward, the marketer sets utm_source = Meta ad numeric ID so
- * the name_match is no longer needed for new events.
+ * Combined-country UTM values like "GT1_Apple_FB_MY&SG" are handled by
+ * treating "MY&SG" as a multi-country code and matching adsets that include
+ * ANY of the individual country codes.
  *
  * For bulk imports, use `preloadMetaEntitiesForProject` + `resolveMetaAttributionInMemory`
  * to avoid a DB round-trip per row.
@@ -67,12 +69,16 @@ function looksLikeMetaId(value: string): boolean {
  * allowing `GT1-Apple-MY` (legacy) to be treated the same as `GT1_Apple_MY`.
  * Normalisation only applies when there are no underscores in the raw value.
  *
- * Example:
- *   "GT1_Apple_FB_MY"  → { prefix: "GT1_Apple_FB", country: "MY" }
- *   "GT1_Apple_FB_SG"  → { prefix: "GT1_Apple_FB", country: "SG" }
- *   "GT1-Apple-MY"     → normalised → { prefix: "GT1_Apple",    country: "MY" }
- *   "GT1-Ecom-MY"      → normalised → { prefix: "GT1_Ecom",     country: "MY" }
- *   "organic"          → { prefix: "organic", country: null }
+ * Handles combined country codes such as "MY&SG" (multi-targeting adsets):
+ * the last segment is accepted as a country if it matches one or more
+ * 2-3-character uppercase codes joined by "&".
+ *
+ * Examples:
+ *   "GT1_Apple_FB_MY"      → { prefix: "GT1_Apple_FB",       country: "MY" }
+ *   "GT1_Apple_FB_MY&SG"   → { prefix: "GT1_Apple_FB",       country: "MY&SG" }
+ *   "GT1_Apple_FB_Image_MY"→ { prefix: "GT1_Apple_FB_Image", country: "MY" }
+ *   "GT1-Apple-MY"         → normalised → { prefix: "GT1_Apple",    country: "MY" }
+ *   "organic"              → { prefix: "organic", country: null }
  */
 function decomposeUtmContent(
   utmContent: string
@@ -90,8 +96,8 @@ function decomposeUtmContent(
   if (parts.length < 2) return { prefix: raw, country: null };
 
   const last = parts.at(-1) ?? "";
-  // Country codes are 2–3 uppercase ASCII letters.
-  if (/^[A-Z]{2,3}$/.test(last)) {
+  // Accept 2–3 uppercase letter codes, optionally joined by "&" (e.g. "MY&SG").
+  if (/^[A-Z]{2,3}(&[A-Z]{2,3})*$/.test(last)) {
     return {
       prefix: parts.slice(0, -1).join("_"),
       country: last,
@@ -105,14 +111,17 @@ function decomposeUtmContent(
  * Used by both the in-memory path and the DB path.
  *
  * Matching strategy (in order):
- *  1. Full prefix match (e.g. "GT1_Apple_FB").
- *  2. If zero candidates, shorten the prefix by one "_" segment and retry once.
- *     This handles cases where the adset name embeds an audience qualifier between
- *     the identifier and the platform suffix — e.g.:
- *       utm_content = "GT1_lookalike_FB_MY"  → prefix = "GT1_lookalike_FB"
- *       adset name  = "GT1_Lookalike 1-3%_FB_Video_sharma (MY)"
- *     The segment "_FB" is appended to the UTM but the adset has extra text between
- *     "lookalike" and "_FB", so the full prefix fails but "GT1_lookalike" matches.
+ *  1. Full prefix match (e.g. "GT1_Apple_FB_Image").
+ *  2. If zero candidates, progressively shorten the prefix by one "_" segment
+ *     and retry, stopping when only one segment remains (e.g. "GT1" alone is
+ *     too broad to be meaningful). This handles:
+ *     - "GT1_Apple_FB_Image" → "GT1_Apple_FB" when no Image-specific adsets exist.
+ *     - "GT1_lookalike_FB"   → "GT1_lookalike" when an audience qualifier
+ *       ("1-3%") sits between the brand identifier and the platform suffix in
+ *       the adset name (e.g. "GT1_Lookalike 1-3%_FB_Video_sharma (MY)").
+ *
+ * Country matching handles combined codes: "MY&SG" is satisfied by any adset
+ * whose name contains "my" OR "sg".
  */
 function findBestAdsetMatch(
   adsets: Array<{ id: string; name: string | null; campaign_id: string }>,
@@ -129,9 +138,18 @@ function findBestAdsetMatch(
 
   const campaignLower = campaign.toLowerCase();
 
+  /** Returns true when the adset name satisfies the country filter. */
+  function matchesCountry(nameLower: string): boolean {
+    if (country === null) return true;
+    // Combined codes e.g. "MY&SG" — name must contain ANY of the individual codes.
+    if (country.includes("&")) {
+      return country.split("&").some((c) => nameLower.includes(c.toLowerCase()));
+    }
+    return nameLower.includes(country.toLowerCase());
+  }
+
   /**
    * Filters adsets that contain all three signals: prefix, angle, and country.
-   * The country check is loose (`(my & sg)` satisfies a `my` filter).
    */
   function filterCandidates(
     searchPrefix: string
@@ -139,30 +157,35 @@ function findBestAdsetMatch(
     const pfxLower = searchPrefix.toLowerCase();
     return adsets.filter((adset) => {
       const nameLower = (adset.name ?? "").toLowerCase();
-      const hasPrefix = nameLower.includes(pfxLower);
-      const hasAngle = nameLower.includes(campaignLower);
-      const hasCountry =
-        country === null || nameLower.includes(country.toLowerCase());
-      return hasPrefix && hasAngle && hasCountry;
+      return (
+        nameLower.includes(pfxLower) &&
+        nameLower.includes(campaignLower) &&
+        matchesCountry(nameLower)
+      );
     });
   }
 
+  // Try progressively shorter prefixes until we find candidates or exhaust options.
+  // Stop at 2 segments minimum (e.g. "GT1_Apple") — single-segment prefixes like
+  // "GT1" are too broad and risk false-positive matches.
   let candidates = filterCandidates(prefix);
+  let shortenedPrefix = prefix;
 
-  // Fallback: drop the last "_"-separated segment of the prefix and retry once.
-  // Handles cases like "GT1_lookalike_FB" → "GT1_lookalike" matching
-  // "GT1_Lookalike 1-3%_FB_Video_*" where an audience qualifier sits in the name.
-  if (candidates.length === 0) {
-    const lastUnderscore = prefix.lastIndexOf("_");
-    if (lastUnderscore > 0) {
-      const shorterPrefix = prefix.slice(0, lastUnderscore);
-      candidates = filterCandidates(shorterPrefix);
-    }
+  while (candidates.length === 0) {
+    const lastUnderscore = shortenedPrefix.lastIndexOf("_");
+    if (lastUnderscore <= 0) break;
+    const newPrefix = shortenedPrefix.slice(0, lastUnderscore);
+    // Stop once we are down to a single-segment prefix (no underscore left).
+    if (!newPrefix.includes("_")) break;
+    shortenedPrefix = newPrefix;
+    candidates = filterCandidates(shortenedPrefix);
   }
 
   if (candidates.length === 0) return EMPTY_RESULT;
 
-  // Sort for determinism: prefer exact angle boundary then name ASC.
+  // Sort for determinism: prefer exact angle boundary, then name ASC, then
+  // larger ID as a tiebreaker so we consistently prefer the newer active adset
+  // when two adsets share the same name but differ only in capitalisation.
   candidates.sort((a, b) => {
     const aName = (a.name ?? "").toLowerCase();
     const bName = (b.name ?? "").toLowerCase();
@@ -170,7 +193,10 @@ function findBestAdsetMatch(
     const bExact = bName.includes(`_${campaignLower} `) || bName.includes(`_${campaignLower}(`);
     if (aExact && !bExact) return -1;
     if (!aExact && bExact) return 1;
-    return aName.localeCompare(bName);
+    const nameCmp = aName.localeCompare(bName);
+    if (nameCmp !== 0) return nameCmp;
+    // Tiebreak: prefer the larger (newer) adset ID — newer adsets are active.
+    return b.id.localeCompare(a.id);
   });
 
   const best = candidates[0];

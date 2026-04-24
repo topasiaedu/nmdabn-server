@@ -1,6 +1,6 @@
 # Entities
 
-Use this folder for **entity-style** wiki pages: organizations, products, named integrations, locations, or other “things” you want to track as first-class notes.
+Use this folder for **entity-style** wiki pages: organizations, products, named integrations, locations, or other "things" you want to track as first-class notes.
 
 Add pages as ingests and questions surface them. Link entity pages from concept and source notes in this vault.
 
@@ -8,3 +8,4 @@ Add pages as ingests and questions surface them. Link entity pages from concept 
 
 - [[GoHighLevel]] — vendor / CRM integration entity
 - [[Zoom]] — webinar / attendance data source for dashboard and journey
+- [[Meta-Ads]] — Meta (Facebook) Ads platform; ad spend, CPL, campaign/adset/ad sync
