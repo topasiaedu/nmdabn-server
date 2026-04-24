@@ -449,20 +449,19 @@
     });
     savePendingOptin(optinPayload);
 
-    // Flush immediately instead of waiting for the 5-second interval.
-    // GHL funnels redirect to a thank-you page within milliseconds of submit;
-    // some mobile browsers drop keepalive fetch requests on navigation, so
-    // getting the POST out before the redirect is the only reliable guarantee.
+    // Attempt an immediate keepalive flush — best-effort only.
+    // GHL's redirect fires within milliseconds of submit, and some browsers
+    // (mobile WebViews in particular) abort keepalive fetches before they are
+    // sent. savePendingOptin() above is the guaranteed path; this flush is
+    // just an optimistic first attempt that avoids the round-trip on the next
+    // page when the keepalive does succeed.
+    //
+    // IMPORTANT: do NOT call localStorage.removeItem here. The removeItem must
+    // happen only inside replayPendingOptin() on the next page load, because
+    // fetch is asynchronous — the keepalive is in-flight when this function
+    // returns, and calling removeItem now would destroy the backup before we
+    // know whether the network request survived the redirect.
     flush();
-
-    // Clear the pending-optin entry only after flush() has sent it. If
-    // sendPayload succeeds the localStorage entry is redundant; remove it so
-    // the replay on the next page is a no-op.
-    try {
-      window.localStorage.removeItem(STORAGE_PENDING_OPTIN);
-    } catch {
-      /* ignore */
-    }
   }
 
   // Capture phase: GHL's own JS calls stopPropagation() on form elements,
