@@ -46,9 +46,10 @@ import type {
 // Date helpers
 // ---------------------------------------------------------------------------
 
-/** Format a Date as YYYY-MM-DD using UTC (matches Meta insights date keys). */
+/** Format a Date as YYYY-MM-DD in the browser's local timezone. */
 function toIsoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  // en-CA locale produces YYYY-MM-DD format, respecting the device timezone.
+  return new Intl.DateTimeFormat("en-CA").format(d);
 }
 
 function todayIso(): string {
