@@ -46,8 +46,9 @@ import type {
 // Date helpers
 // ---------------------------------------------------------------------------
 
+/** Format a Date as YYYY-MM-DD in Kuala Lumpur local time (UTC+8). */
 function toIsoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return d.toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" });
 }
 
 function todayIso(): string {
