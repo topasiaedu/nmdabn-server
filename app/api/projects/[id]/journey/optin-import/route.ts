@@ -14,6 +14,7 @@ import {
 import { resolveAgencyLineTagsForRequest } from "@/services/traffic-project-settings";
 
 export const runtime = "nodejs";
+export const maxDuration = 300; // allow up to 5 min for large batches with GHL API calls
 
 type NdjsonEvent =
   | ({ type: "progress" } & OptinImportProgress)

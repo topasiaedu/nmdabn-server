@@ -331,8 +331,12 @@ async function queryJourneyLeadCounts(
     meta_campaign_id: string | null;
     meta_adset_id: string | null;
     meta_ad_id: string | null;
+    "payload->utm_campaign": string | null;
   };
-  type JourneyColumn = keyof JourneyRow;
+  type JourneyColumn = keyof Pick<
+    JourneyRow,
+    "meta_campaign_id" | "meta_adset_id" | "meta_ad_id"
+  >;
 
   const idColumnMap: Record<AdsManagerLevel, JourneyColumn> = {
     campaign: "meta_campaign_id",
@@ -353,18 +357,17 @@ async function queryJourneyLeadCounts(
   const klFrom = `${dateFrom}T00:00:00+08:00`;
   const klTo = `${dateTo}T23:59:59+08:00`;
 
-  // Select all three ID columns so the row type is concrete and we can
-  // index into it via the typed `idColumn` key without any unsafe cast.
-  // Also exclude rows that were tagged as organic traffic — these have
-  // payload->>'utm_campaign' = 'organic' and no valid Meta attribution.
+  // Select the three ID columns plus utm_campaign from payload so we can
+  // filter organics in JS — using NOT + eq in PostgREST would also exclude
+  // rows where payload->>'utm_campaign' IS NULL (NULL != 'organic' = NULL
+  // in SQL = falsy), which is wrong for rows with no UTM data at all.
   let baseQuery = supabase
     .from("journey_events")
-    .select("meta_campaign_id, meta_adset_id, meta_ad_id")
+    .select("meta_campaign_id, meta_adset_id, meta_ad_id, payload->utm_campaign")
     .eq("project_id", projectId)
     .eq("event_type", "optin")
     .gte("occurred_at", klFrom)
-    .lte("occurred_at", klTo)
-    .not("payload->>utm_campaign", "eq", "organic");
+    .lte("occurred_at", klTo);
 
   if (parentColumn !== null && filterEntityId !== "") {
     baseQuery = baseQuery.eq(parentColumn, filterEntityId);
@@ -379,6 +382,10 @@ async function queryJourneyLeadCounts(
   let totalAll = 0;
 
   for (const row of data as JourneyRow[]) {
+    // Exclude rows explicitly tagged as organic — rows with null utm_campaign
+    // (no UTM data at all) are still counted since they may be valid ad clicks
+    // where the UTM was simply missing.
+    if (row["payload->utm_campaign"] === "organic") continue;
     totalAll += 1;
     const id: string | null = row[idColumn];
     if (id !== null && id !== undefined) {

@@ -32,7 +32,7 @@ import {
 } from "@/services/optin-meta-attribution";
 
 /** Max concurrent rows processed simultaneously. */
-const IMPORT_CONCURRENCY = 6;
+const IMPORT_CONCURRENCY = 3;
 
 export type OptinImportResult = {
   imported: number;
