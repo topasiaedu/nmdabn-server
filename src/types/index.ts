@@ -5,17 +5,11 @@ export type IntegrationAccount = Database['public']['Tables']['integration_accou
 export type IntegrationAccountInsert = Database['public']['Tables']['integration_accounts']['Insert'];
 export type IntegrationAccountUpdate = Database['public']['Tables']['integration_accounts']['Update'];
 
-export type IntegrationJob = Database['public']['Tables']['integration_jobs']['Row'];
-export type IntegrationJobInsert = Database['public']['Tables']['integration_jobs']['Insert'];
-export type IntegrationJobUpdate = Database['public']['Tables']['integration_jobs']['Update'];
-
-export type User = Database['public']['Tables']['users']['Row'];
 export type Workspace = Database['public']['Tables']['workspaces']['Row'];
 export type WorkspaceMember = Database['public']['Tables']['workspace_members']['Row'];
 
 // Enums
 export type IntegrationProvider = Database['public']['Enums']['integration_provider'];
-export type IntegrationJobStatus = Database['public']['Enums']['integration_job_status'];
 
 // API Response types
 export interface ApiResponse<T = unknown> {

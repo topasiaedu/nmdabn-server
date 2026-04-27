@@ -77,7 +77,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const utmAxes = parseUtmDimensionsParam(sp.get("dimensions"));
 
     /* Resolve line tags for filtering (null = all contacts). */
-    let lineTags: string[] | null = null;
+    let lineTags: string[] | undefined = undefined;
     if (lineKey !== "" && lineKey !== "All") {
       const resolved = await fetchProjectTrafficSettings(
         projectId,
