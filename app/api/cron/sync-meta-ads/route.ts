@@ -15,8 +15,8 @@ import { syncMetaAdsForProject } from "@/services/meta-ads-sync";
 
 export const runtime = "nodejs";
 
-/** Lookback window for hourly cron syncs (catch up on last 3 days of data). */
-const CRON_LOOKBACK_DAYS = 3;
+/** Lookback window for the nightly cron sync (covers the past day + 1 buffer day). */
+const CRON_LOOKBACK_DAYS = 2;
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const cronSecret = process.env.CRON_SECRET;
