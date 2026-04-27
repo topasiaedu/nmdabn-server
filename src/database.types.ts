@@ -1,4 +1,4 @@
-export type Json =
+﻿export type Json =
   | string
   | number
   | boolean
@@ -14,6 +14,73 @@ export type Database = {
   }
   public: {
     Tables: {
+      ad_spend_run_attribution: {
+        Row: {
+          agency_line: string
+          attribution_method: string
+          computed_at: string
+          currency: string
+          date_from: string | null
+          date_to: string | null
+          id: string
+          integration_account_id: string | null
+          project_id: string
+          source_system: string
+          spend: number
+          webinar_run_id: string
+        }
+        Insert: {
+          agency_line: string
+          attribution_method?: string
+          computed_at?: string
+          currency?: string
+          date_from?: string | null
+          date_to?: string | null
+          id?: string
+          integration_account_id?: string | null
+          project_id: string
+          source_system?: string
+          spend?: number
+          webinar_run_id: string
+        }
+        Update: {
+          agency_line?: string
+          attribution_method?: string
+          computed_at?: string
+          currency?: string
+          date_from?: string | null
+          date_to?: string | null
+          id?: string
+          integration_account_id?: string | null
+          project_id?: string
+          source_system?: string
+          spend?: number
+          webinar_run_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ad_spend_run_attribution_integration_account_id_fkey"
+            columns: ["integration_account_id"]
+            isOneToOne: false
+            referencedRelation: "integration_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ad_spend_run_attribution_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ad_spend_run_attribution_webinar_run_id_fkey"
+            columns: ["webinar_run_id"]
+            isOneToOne: false
+            referencedRelation: "webinar_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ghl_connections: {
         Row: {
           created_at: string
@@ -973,544 +1040,6 @@ export type Database = {
           },
         ]
       }
-      /**
-       * Job queue — merged when not returned by `supabase gen types` for this project.
-       */
-      integration_jobs: {
-        Row: {
-          attempts: number
-          created_at: string
-          id: string
-          integration_account_id: string | null
-          last_error: string | null
-          operation: string
-          payload: Json
-          provider: Database["public"]["Enums"]["integration_provider"]
-          run_at: string | null
-          status: Database["public"]["Enums"]["integration_job_status"]
-          updated_at: string
-          workspace_id: string
-        }
-        Insert: {
-          attempts?: number
-          created_at?: string
-          id?: string
-          integration_account_id?: string | null
-          last_error?: string | null
-          operation: string
-          payload: Json
-          provider: Database["public"]["Enums"]["integration_provider"]
-          run_at?: string | null
-          status?: Database["public"]["Enums"]["integration_job_status"]
-          updated_at?: string
-          workspace_id: string
-        }
-        Update: {
-          attempts?: number
-          created_at?: string
-          id?: string
-          integration_account_id?: string | null
-          last_error?: string | null
-          operation?: string
-          payload?: Json
-          provider?: Database["public"]["Enums"]["integration_provider"]
-          run_at?: string | null
-          status?: Database["public"]["Enums"]["integration_job_status"]
-          updated_at?: string
-          workspace_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "integration_jobs_integration_account_id_fkey"
-            columns: ["integration_account_id"]
-            isOneToOne: false
-            referencedRelation: "integration_accounts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "integration_jobs_workspace_id_fkey"
-            columns: ["workspace_id"]
-            isOneToOne: false
-            referencedRelation: "workspaces"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      ad_spend_run_attribution: {
-        Row: {
-          agency_line: string
-          attribution_method: string
-          computed_at: string
-          currency: string
-          date_from: string | null
-          date_to: string | null
-          id: string
-          integration_account_id: string | null
-          project_id: string
-          source_system: string
-          spend: number
-          webinar_run_id: string
-        }
-        Insert: {
-          agency_line: string
-          attribution_method?: string
-          computed_at?: string
-          currency?: string
-          date_from?: string | null
-          date_to?: string | null
-          id?: string
-          integration_account_id?: string | null
-          project_id: string
-          source_system?: string
-          spend?: number
-          webinar_run_id: string
-        }
-        Update: {
-          agency_line?: string
-          attribution_method?: string
-          computed_at?: string
-          currency?: string
-          date_from?: string | null
-          date_to?: string | null
-          id?: string
-          integration_account_id?: string | null
-          project_id?: string
-          source_system?: string
-          spend?: number
-          webinar_run_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "ad_spend_run_attribution_integration_account_id_fkey"
-            columns: ["integration_account_id"]
-            isOneToOne: false
-            referencedRelation: "integration_accounts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ad_spend_run_attribution_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "projects"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ad_spend_run_attribution_webinar_run_id_fkey"
-            columns: ["webinar_run_id"]
-            isOneToOne: false
-            referencedRelation: "webinar_runs"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      meta_campaigns: {
-        Row: {
-          created_at: string
-          daily_budget: number | null
-          id: string
-          integration_account_id: string
-          is_cbo: boolean
-          lifetime_budget: number | null
-          name: string | null
-          objective: string | null
-          raw_json: Json | null
-          status: string | null
-          synced_at: string | null
-        }
-        Insert: {
-          created_at?: string
-          daily_budget?: number | null
-          id: string
-          integration_account_id: string
-          is_cbo?: boolean
-          lifetime_budget?: number | null
-          name?: string | null
-          objective?: string | null
-          raw_json?: Json | null
-          status?: string | null
-          synced_at?: string | null
-        }
-        Update: {
-          created_at?: string
-          daily_budget?: number | null
-          id?: string
-          integration_account_id?: string
-          is_cbo?: boolean
-          lifetime_budget?: number | null
-          name?: string | null
-          objective?: string | null
-          raw_json?: Json | null
-          status?: string | null
-          synced_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "meta_campaigns_integration_account_id_fkey"
-            columns: ["integration_account_id"]
-            isOneToOne: false
-            referencedRelation: "integration_accounts"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      meta_insights: {
-        Row: {
-          adset_id: string | null
-          campaign_id: string
-          campaign_name: string | null
-          clicks: number | null
-          currency: string | null
-          date_start: string
-          date_stop: string
-          id: string
-          impressions: number | null
-          integration_account_id: string
-          landing_page_views: number | null
-          leads: number | null
-          purchases: number | null
-          purchase_value: number | null
-          reach: number | null
-          raw_json: Json | null
-          spend: number | null
-          synced_at: string | null
-        }
-        Insert: {
-          adset_id?: string | null
-          campaign_id: string
-          campaign_name?: string | null
-          clicks?: number | null
-          currency?: string | null
-          date_start: string
-          date_stop: string
-          id?: string
-          impressions?: number | null
-          integration_account_id: string
-          landing_page_views?: number | null
-          leads?: number | null
-          purchases?: number | null
-          purchase_value?: number | null
-          reach?: number | null
-          raw_json?: Json | null
-          spend?: number | null
-          synced_at?: string | null
-        }
-        Update: {
-          adset_id?: string | null
-          campaign_id?: string
-          campaign_name?: string | null
-          clicks?: number | null
-          currency?: string | null
-          date_start?: string
-          date_stop?: string
-          id?: string
-          impressions?: number | null
-          integration_account_id?: string
-          landing_page_views?: number | null
-          leads?: number | null
-          purchases?: number | null
-          purchase_value?: number | null
-          reach?: number | null
-          raw_json?: Json | null
-          spend?: number | null
-          synced_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "meta_insights_integration_account_id_fkey"
-            columns: ["integration_account_id"]
-            isOneToOne: false
-            referencedRelation: "integration_accounts"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      meta_ad_insights: {
-        Row: {
-          ad_id: string
-          ad_name: string | null
-          adset_id: string
-          campaign_id: string
-          campaign_name: string | null
-          clicks: number | null
-          currency: string | null
-          date_start: string
-          date_stop: string
-          id: string
-          impressions: number | null
-          integration_account_id: string
-          landing_page_views: number | null
-          leads: number | null
-          purchases: number | null
-          purchase_value: number | null
-          reach: number | null
-          raw_json: Json | null
-          spend: number | null
-          synced_at: string | null
-        }
-        Insert: {
-          ad_id: string
-          ad_name?: string | null
-          adset_id: string
-          campaign_id: string
-          campaign_name?: string | null
-          clicks?: number | null
-          currency?: string | null
-          date_start: string
-          date_stop: string
-          id?: string
-          impressions?: number | null
-          integration_account_id: string
-          landing_page_views?: number | null
-          leads?: number | null
-          purchases?: number | null
-          purchase_value?: number | null
-          reach?: number | null
-          raw_json?: Json | null
-          spend?: number | null
-          synced_at?: string | null
-        }
-        Update: {
-          ad_id?: string
-          ad_name?: string | null
-          adset_id?: string
-          campaign_id?: string
-          campaign_name?: string | null
-          clicks?: number | null
-          currency?: string | null
-          date_start?: string
-          date_stop?: string
-          id?: string
-          impressions?: number | null
-          integration_account_id?: string
-          landing_page_views?: number | null
-          leads?: number | null
-          purchases?: number | null
-          purchase_value?: number | null
-          reach?: number | null
-          raw_json?: Json | null
-          spend?: number | null
-          synced_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "meta_ad_insights_integration_account_id_fkey"
-            columns: ["integration_account_id"]
-            isOneToOne: false
-            referencedRelation: "integration_accounts"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      meta_ads: {
-        Row: {
-          adset_id: string
-          campaign_id: string
-          created_at: string
-          id: string
-          integration_account_id: string
-          name: string | null
-          raw_json: Json | null
-          status: string | null
-          synced_at: string | null
-        }
-        Insert: {
-          adset_id: string
-          campaign_id: string
-          created_at?: string
-          id: string
-          integration_account_id: string
-          name?: string | null
-          raw_json?: Json | null
-          status?: string | null
-          synced_at?: string | null
-        }
-        Update: {
-          adset_id?: string
-          campaign_id?: string
-          created_at?: string
-          id?: string
-          integration_account_id?: string
-          name?: string | null
-          raw_json?: Json | null
-          status?: string | null
-          synced_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "meta_ads_integration_account_id_fkey"
-            columns: ["integration_account_id"]
-            isOneToOne: false
-            referencedRelation: "integration_accounts"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      meta_adset_insights: {
-        Row: {
-          adset_id: string
-          adset_name: string | null
-          campaign_id: string
-          campaign_name: string | null
-          clicks: number | null
-          currency: string | null
-          date_start: string
-          date_stop: string
-          id: string
-          impressions: number | null
-          integration_account_id: string
-          landing_page_views: number | null
-          leads: number | null
-          purchases: number | null
-          purchase_value: number | null
-          reach: number | null
-          raw_json: Json | null
-          spend: number | null
-          synced_at: string | null
-        }
-        Insert: {
-          adset_id: string
-          adset_name?: string | null
-          campaign_id: string
-          campaign_name?: string | null
-          clicks?: number | null
-          currency?: string | null
-          date_start: string
-          date_stop: string
-          id?: string
-          impressions?: number | null
-          integration_account_id: string
-          landing_page_views?: number | null
-          leads?: number | null
-          purchases?: number | null
-          purchase_value?: number | null
-          reach?: number | null
-          raw_json?: Json | null
-          spend?: number | null
-          synced_at?: string | null
-        }
-        Update: {
-          adset_id?: string
-          adset_name?: string | null
-          campaign_id?: string
-          campaign_name?: string | null
-          clicks?: number | null
-          currency?: string | null
-          date_start?: string
-          date_stop?: string
-          id?: string
-          impressions?: number | null
-          integration_account_id?: string
-          landing_page_views?: number | null
-          leads?: number | null
-          purchases?: number | null
-          purchase_value?: number | null
-          reach?: number | null
-          raw_json?: Json | null
-          spend?: number | null
-          synced_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "meta_adset_insights_integration_account_id_fkey"
-            columns: ["integration_account_id"]
-            isOneToOne: false
-            referencedRelation: "integration_accounts"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      meta_adsets: {
-        Row: {
-          billing_event: string | null
-          campaign_id: string
-          created_at: string
-          daily_budget: number | null
-          id: string
-          integration_account_id: string
-          lifetime_budget: number | null
-          name: string | null
-          optimization_goal: string | null
-          raw_json: Json | null
-          status: string | null
-          synced_at: string | null
-        }
-        Insert: {
-          billing_event?: string | null
-          campaign_id: string
-          created_at?: string
-          daily_budget?: number | null
-          id: string
-          integration_account_id: string
-          lifetime_budget?: number | null
-          name?: string | null
-          optimization_goal?: string | null
-          raw_json?: Json | null
-          status?: string | null
-          synced_at?: string | null
-        }
-        Update: {
-          billing_event?: string | null
-          campaign_id?: string
-          created_at?: string
-          daily_budget?: number | null
-          id?: string
-          integration_account_id?: string
-          lifetime_budget?: number | null
-          name?: string | null
-          optimization_goal?: string | null
-          raw_json?: Json | null
-          status?: string | null
-          synced_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "meta_adsets_integration_account_id_fkey"
-            columns: ["integration_account_id"]
-            isOneToOne: false
-            referencedRelation: "integration_accounts"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      project_meta_ad_accounts: {
-        Row: {
-          agency_line: string
-          created_at: string
-          id: string
-          integration_account_id: string
-          project_id: string
-        }
-        Insert: {
-          agency_line: string
-          created_at?: string
-          id?: string
-          integration_account_id: string
-          project_id: string
-        }
-        Update: {
-          agency_line?: string
-          created_at?: string
-          id?: string
-          integration_account_id?: string
-          project_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "project_meta_ad_accounts_integration_account_id_fkey"
-            columns: ["integration_account_id"]
-            isOneToOne: false
-            referencedRelation: "integration_accounts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "project_meta_ad_accounts_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "projects"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       journey_events: {
         Row: {
           contact_id: string | null
@@ -1587,6 +1116,393 @@ export type Database = {
           },
         ]
       }
+      meta_ad_insights: {
+        Row: {
+          ad_id: string
+          ad_name: string | null
+          adset_id: string
+          campaign_id: string
+          campaign_name: string | null
+          clicks: number | null
+          currency: string | null
+          date_start: string
+          date_stop: string
+          id: string
+          impressions: number | null
+          integration_account_id: string
+          landing_page_views: number | null
+          leads: number | null
+          purchase_value: number | null
+          purchases: number | null
+          raw_json: Json | null
+          reach: number | null
+          spend: number | null
+          synced_at: string | null
+          video_thruplays: number | null
+          video_views: number | null
+        }
+        Insert: {
+          ad_id: string
+          ad_name?: string | null
+          adset_id: string
+          campaign_id: string
+          campaign_name?: string | null
+          clicks?: number | null
+          currency?: string | null
+          date_start: string
+          date_stop: string
+          id?: string
+          impressions?: number | null
+          integration_account_id: string
+          landing_page_views?: number | null
+          leads?: number | null
+          purchase_value?: number | null
+          purchases?: number | null
+          raw_json?: Json | null
+          reach?: number | null
+          spend?: number | null
+          synced_at?: string | null
+          video_thruplays?: number | null
+          video_views?: number | null
+        }
+        Update: {
+          ad_id?: string
+          ad_name?: string | null
+          adset_id?: string
+          campaign_id?: string
+          campaign_name?: string | null
+          clicks?: number | null
+          currency?: string | null
+          date_start?: string
+          date_stop?: string
+          id?: string
+          impressions?: number | null
+          integration_account_id?: string
+          landing_page_views?: number | null
+          leads?: number | null
+          purchase_value?: number | null
+          purchases?: number | null
+          raw_json?: Json | null
+          reach?: number | null
+          spend?: number | null
+          synced_at?: string | null
+          video_thruplays?: number | null
+          video_views?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_ad_insights_integration_account_id_fkey"
+            columns: ["integration_account_id"]
+            isOneToOne: false
+            referencedRelation: "integration_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_ads: {
+        Row: {
+          adset_id: string
+          campaign_id: string
+          created_at: string
+          id: string
+          integration_account_id: string
+          name: string | null
+          raw_json: Json | null
+          status: string | null
+          synced_at: string | null
+        }
+        Insert: {
+          adset_id: string
+          campaign_id: string
+          created_at?: string
+          id: string
+          integration_account_id: string
+          name?: string | null
+          raw_json?: Json | null
+          status?: string | null
+          synced_at?: string | null
+        }
+        Update: {
+          adset_id?: string
+          campaign_id?: string
+          created_at?: string
+          id?: string
+          integration_account_id?: string
+          name?: string | null
+          raw_json?: Json | null
+          status?: string | null
+          synced_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_ads_integration_account_id_fkey"
+            columns: ["integration_account_id"]
+            isOneToOne: false
+            referencedRelation: "integration_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_adset_insights: {
+        Row: {
+          adset_id: string
+          adset_name: string | null
+          campaign_id: string
+          campaign_name: string | null
+          clicks: number | null
+          currency: string | null
+          date_start: string
+          date_stop: string
+          id: string
+          impressions: number | null
+          integration_account_id: string
+          landing_page_views: number | null
+          leads: number | null
+          purchase_value: number | null
+          purchases: number | null
+          raw_json: Json | null
+          reach: number | null
+          spend: number | null
+          synced_at: string | null
+          video_thruplays: number | null
+          video_views: number | null
+        }
+        Insert: {
+          adset_id: string
+          adset_name?: string | null
+          campaign_id: string
+          campaign_name?: string | null
+          clicks?: number | null
+          currency?: string | null
+          date_start: string
+          date_stop: string
+          id?: string
+          impressions?: number | null
+          integration_account_id: string
+          landing_page_views?: number | null
+          leads?: number | null
+          purchase_value?: number | null
+          purchases?: number | null
+          raw_json?: Json | null
+          reach?: number | null
+          spend?: number | null
+          synced_at?: string | null
+          video_thruplays?: number | null
+          video_views?: number | null
+        }
+        Update: {
+          adset_id?: string
+          adset_name?: string | null
+          campaign_id?: string
+          campaign_name?: string | null
+          clicks?: number | null
+          currency?: string | null
+          date_start?: string
+          date_stop?: string
+          id?: string
+          impressions?: number | null
+          integration_account_id?: string
+          landing_page_views?: number | null
+          leads?: number | null
+          purchase_value?: number | null
+          purchases?: number | null
+          raw_json?: Json | null
+          reach?: number | null
+          spend?: number | null
+          synced_at?: string | null
+          video_thruplays?: number | null
+          video_views?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_adset_insights_integration_account_id_fkey"
+            columns: ["integration_account_id"]
+            isOneToOne: false
+            referencedRelation: "integration_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_adsets: {
+        Row: {
+          billing_event: string | null
+          campaign_id: string
+          created_at: string
+          daily_budget: number | null
+          id: string
+          integration_account_id: string
+          lifetime_budget: number | null
+          name: string | null
+          optimization_goal: string | null
+          raw_json: Json | null
+          status: string | null
+          synced_at: string | null
+        }
+        Insert: {
+          billing_event?: string | null
+          campaign_id: string
+          created_at?: string
+          daily_budget?: number | null
+          id: string
+          integration_account_id: string
+          lifetime_budget?: number | null
+          name?: string | null
+          optimization_goal?: string | null
+          raw_json?: Json | null
+          status?: string | null
+          synced_at?: string | null
+        }
+        Update: {
+          billing_event?: string | null
+          campaign_id?: string
+          created_at?: string
+          daily_budget?: number | null
+          id?: string
+          integration_account_id?: string
+          lifetime_budget?: number | null
+          name?: string | null
+          optimization_goal?: string | null
+          raw_json?: Json | null
+          status?: string | null
+          synced_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_adsets_integration_account_id_fkey"
+            columns: ["integration_account_id"]
+            isOneToOne: false
+            referencedRelation: "integration_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_campaigns: {
+        Row: {
+          created_at: string
+          daily_budget: number | null
+          id: string
+          integration_account_id: string
+          is_cbo: boolean
+          lifetime_budget: number | null
+          name: string | null
+          objective: string | null
+          raw_json: Json | null
+          status: string | null
+          synced_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          daily_budget?: number | null
+          id: string
+          integration_account_id: string
+          is_cbo?: boolean
+          lifetime_budget?: number | null
+          name?: string | null
+          objective?: string | null
+          raw_json?: Json | null
+          status?: string | null
+          synced_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          daily_budget?: number | null
+          id?: string
+          integration_account_id?: string
+          is_cbo?: boolean
+          lifetime_budget?: number | null
+          name?: string | null
+          objective?: string | null
+          raw_json?: Json | null
+          status?: string | null
+          synced_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_campaigns_integration_account_id_fkey"
+            columns: ["integration_account_id"]
+            isOneToOne: false
+            referencedRelation: "integration_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_insights: {
+        Row: {
+          adset_id: string | null
+          campaign_id: string
+          campaign_name: string | null
+          clicks: number | null
+          currency: string | null
+          date_start: string
+          date_stop: string
+          id: string
+          impressions: number | null
+          integration_account_id: string
+          landing_page_views: number | null
+          leads: number | null
+          purchase_value: number | null
+          purchases: number | null
+          raw_json: Json | null
+          reach: number | null
+          spend: number | null
+          synced_at: string | null
+          video_thruplays: number | null
+          video_views: number | null
+        }
+        Insert: {
+          adset_id?: string | null
+          campaign_id: string
+          campaign_name?: string | null
+          clicks?: number | null
+          currency?: string | null
+          date_start: string
+          date_stop: string
+          id?: string
+          impressions?: number | null
+          integration_account_id: string
+          landing_page_views?: number | null
+          leads?: number | null
+          purchase_value?: number | null
+          purchases?: number | null
+          raw_json?: Json | null
+          reach?: number | null
+          spend?: number | null
+          synced_at?: string | null
+          video_thruplays?: number | null
+          video_views?: number | null
+        }
+        Update: {
+          adset_id?: string | null
+          campaign_id?: string
+          campaign_name?: string | null
+          clicks?: number | null
+          currency?: string | null
+          date_start?: string
+          date_stop?: string
+          id?: string
+          impressions?: number | null
+          integration_account_id?: string
+          landing_page_views?: number | null
+          leads?: number | null
+          purchase_value?: number | null
+          purchases?: number | null
+          raw_json?: Json | null
+          reach?: number | null
+          spend?: number | null
+          synced_at?: string | null
+          video_thruplays?: number | null
+          video_views?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_insights_integration_account_id_fkey"
+            columns: ["integration_account_id"]
+            isOneToOne: false
+            referencedRelation: "integration_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       page_events: {
         Row: {
           element_tag: string | null
@@ -1657,6 +1573,48 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "page_events_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_meta_ad_accounts: {
+        Row: {
+          agency_line: string
+          created_at: string
+          id: string
+          integration_account_id: string
+          last_synced_at: string | null
+          project_id: string
+        }
+        Insert: {
+          agency_line: string
+          created_at?: string
+          id?: string
+          integration_account_id: string
+          last_synced_at?: string | null
+          project_id: string
+        }
+        Update: {
+          agency_line?: string
+          created_at?: string
+          id?: string
+          integration_account_id?: string
+          last_synced_at?: string | null
+          project_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_meta_ad_accounts_integration_account_id_fkey"
+            columns: ["integration_account_id"]
+            isOneToOne: false
+            referencedRelation: "integration_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_meta_ad_accounts_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
@@ -1791,6 +1749,56 @@ export type Database = {
           },
         ]
       }
+      workspace_members: {
+        Row: {
+          created_at: string
+          id: string
+          role: string
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role?: string
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: string
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspace_members_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workspaces: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
       zoom_attendance_segments: {
         Row: {
           contact_id: string | null
@@ -1861,80 +1869,6 @@ export type Database = {
           },
         ]
       }
-      /**
-       * Public `users` mirror — merged when not returned by `supabase gen types` for this project.
-       */
-      users: {
-        Row: {
-          created_at: string
-          email: string
-          full_name: string | null
-          id: string
-        }
-        Insert: {
-          created_at?: string
-          email: string
-          full_name?: string | null
-          id?: string
-        }
-        Update: {
-          created_at?: string
-          email?: string
-          full_name?: string | null
-          id?: string
-        }
-        Relationships: []
-      }
-      workspace_members: {
-        Row: {
-          created_at: string
-          id: string
-          role: string
-          user_id: string
-          workspace_id: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          role?: string
-          user_id: string
-          workspace_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          role?: string
-          user_id?: string
-          workspace_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "workspace_members_workspace_id_fkey"
-            columns: ["workspace_id"]
-            isOneToOne: false
-            referencedRelation: "workspaces"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      workspaces: {
-        Row: {
-          created_at: string
-          id: string
-          name: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          name: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          name?: string
-        }
-        Relationships: []
-      }
     }
     Views: {
       [_ in never]: never
@@ -1947,6 +1881,129 @@ export type Database = {
       backfill_webinar_runs_for_location: {
         Args: { p_location_id: string }
         Returns: number
+      }
+      get_agency_all_runs: {
+        Args: { p_project_id: string; p_workspace_id: string }
+        Returns: {
+          ad_spend: number
+          ad_spend_currency: string
+          agency_line: string
+          buyers: number
+          conv_rate: number
+          cpa: number
+          cpl: number
+          leads: number
+          run_id: string
+          run_start_at: string
+          showed: number
+          showup_rate: number
+        }[]
+      }
+      get_agency_stats: {
+        Args: {
+          p_date_from: string
+          p_date_to: string
+          p_project_id: string
+          p_webinar_run_id: string
+          p_workspace_id: string
+        }
+        Returns: {
+          ad_spend: number
+          ad_spend_currency: string
+          agency_line: string
+          buyers: number
+          conversion_rate: number
+          cpa: number
+          cpl: number
+          leads: number
+          run_label: string
+          showed: number
+          showup_rate: number
+          webinar_run_id: string
+        }[]
+      }
+      get_buyer_behavior_all_runs: {
+        Args: { p_project_id: string; p_workspace_id: string }
+        Returns: {
+          count: number
+          label: string
+          pct: number
+          run_id: string
+          run_start_at: string
+          section: string
+        }[]
+      }
+      get_buyer_behavior_stats: {
+        Args: {
+          p_date_from: string
+          p_date_to: string
+          p_project_id: string
+          p_webinar_run_id: string
+          p_workspace_id: string
+        }
+        Returns: {
+          bigint_val: number
+          label: string
+          numeric_val: number
+          pct: number
+          section: string
+          sort_key: number
+        }[]
+      }
+      get_showup_all_runs: {
+        Args: { p_project_id: string; p_workspace_id: string }
+        Returns: {
+          attended: number
+          row_label: string
+          run_id: string
+          run_start_at: string
+          section_key: string
+          section_label: string
+          total: number
+        }[]
+      }
+      get_showup_stats: {
+        Args: {
+          p_date_from: string
+          p_date_to: string
+          p_project_id: string
+          p_webinar_run_id: string
+          p_workspace_id: string
+        }
+        Returns: {
+          denominator: number
+          line_bucket: string
+          numerator: number
+          showup_rate: number
+        }[]
+      }
+      get_traffic_all_runs: {
+        Args: {
+          p_line_tags?: string[]
+          p_project_id: string
+          p_utm_axes?: string[]
+          p_workspace_id: string
+        }
+        Returns: {
+          lead_count: number
+          row_label: string
+          run_id: string
+          run_start_at: string
+          section_key: string
+          section_label: string
+        }[]
+      }
+      recompute_meta_spend_attribution: {
+        Args: { p_project_id: string }
+        Returns: {
+          agency_line: string
+          currency: string
+          date_from: string
+          date_to: string
+          rows_attributed: number
+          spend: number
+          webinar_run_id: string
+        }[]
       }
       traffic_lead_source_breakdown: {
         Args: {
@@ -1977,144 +2034,8 @@ export type Database = {
           webinar_run_id: string
         }[]
       }
-      get_showup_stats: {
-        Args: {
-          p_workspace_id: string
-          p_project_id: string
-          p_webinar_run_id: string
-          p_date_from: string | null
-          p_date_to: string | null
-        }
-        Returns: {
-          line_bucket: string
-          denominator: number
-          numerator: number
-          showup_rate: number | null
-        }[]
-      }
-      recompute_meta_spend_attribution: {
-        Args: {
-          p_project_id: string
-        }
-        Returns: {
-          webinar_run_id: string
-          agency_line: string
-          spend: number
-          currency: string
-          date_from: string | null
-          date_to: string | null
-          rows_attributed: number
-        }[]
-      }
-      get_agency_stats: {
-        Args: {
-          p_workspace_id: string
-          p_project_id: string
-          p_webinar_run_id: string
-          p_date_from: string | null
-          p_date_to: string | null
-        }
-        Returns: {
-          agency_line: string
-          webinar_run_id: string
-          run_label: string
-          leads: number
-          showed: number
-          showup_rate: number | null
-          buyers: number
-          conversion_rate: number | null
-          ad_spend: number | null
-          ad_spend_currency: string | null
-          cpl: number | null
-          cpa: number | null
-        }[]
-      }
-      get_buyer_behavior_stats: {
-        Args: {
-          p_workspace_id: string
-          p_project_id: string
-          p_webinar_run_id: string
-          p_date_from: string | null
-          p_date_to: string | null
-        }
-        Returns: {
-          section: string
-          label: string
-          sort_key: number
-          bigint_val: number | null
-          numeric_val: number | null
-          pct: number | null
-        }[]
-      }
-      get_traffic_all_runs: {
-        Args: {
-          p_project_id: string
-          p_workspace_id: string
-          p_line_tags?: string[] | null
-          /** Subset of utm_source, utm_medium, utm_campaign, utm_content (canonical order in RPC). */
-          p_utm_axes?: string[] | null
-        }
-        Returns: {
-          run_id: string
-          run_start_at: string
-          section_key: string
-          section_label: string
-          row_label: string
-          lead_count: number
-        }[]
-      }
-      get_showup_all_runs: {
-        Args: {
-          p_project_id: string
-          p_workspace_id: string
-        }
-        Returns: {
-          run_id: string
-          run_start_at: string
-          section_key: string
-          section_label: string
-          row_label: string
-          attended: number
-          total: number
-        }[]
-      }
-      get_buyer_behavior_all_runs: {
-        Args: {
-          p_project_id: string
-          p_workspace_id: string
-        }
-        Returns: {
-          run_id: string
-          run_start_at: string
-          section: string
-          label: string
-          count: number
-          pct: number | null
-        }[]
-      }
-      get_agency_all_runs: {
-        Args: {
-          p_project_id: string
-          p_workspace_id: string
-        }
-        Returns: {
-          run_id: string
-          run_start_at: string
-          agency_line: string
-          leads: number
-          showed: number
-          buyers: number
-          showup_rate: number | null
-          conv_rate: number | null
-          ad_spend: number | null
-          ad_spend_currency: string | null
-          cpl: number | null
-          cpa: number | null
-        }[]
-      }
     }
     Enums: {
-      integration_job_status: "pending" | "processing" | "done" | "error"
       integration_provider:
         | "zoom"
         | "vapi"
@@ -2248,8 +2169,14 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      integration_job_status: ["pending", "processing", "done", "error"],
-      integration_provider: ["zoom", "vapi", "google_sheets", "gohighlevel"],
+      integration_provider: [
+        "zoom",
+        "vapi",
+        "google_sheets",
+        "gohighlevel",
+        "meta_ads",
+      ],
     },
   },
 } as const
+

@@ -122,13 +122,13 @@ export interface AdsManagerPayload {
   /** True when at least one Meta ad account is linked to this project. */
   has_linked_accounts: boolean;
   /**
-   * Present when level=adset or level=ad.
-   * The campaign the user drilled into.
+   * @deprecated Not populated by the 3-tab UI. Kept for API compatibility only.
+   * Present when level=adset or level=ad, the campaign the user drilled into.
    */
   campaign_context: AdsManagerBreadcrumb | null;
   /**
-   * Present when level=ad.
-   * The ad set the user drilled into.
+   * @deprecated Not populated by the 3-tab UI. Kept for API compatibility only.
+   * Present when level=ad, the ad set the user drilled into.
    */
   adset_context: AdsManagerBreadcrumb | null;
 }

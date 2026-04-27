@@ -4,8 +4,8 @@
  * Returns aggregated Meta Ads data for the given project and date window.
  * Supports three hierarchy levels via the `level` query param:
  *   - campaign (default) — all campaigns with rolled-up daily spend
- *   - adset               — ad sets within a specific campaign_id
- *   - ad                  — individual ads within a specific adset_id
+ *   - adset               — ad sets, optionally filtered by campaign_ids
+ *   - ad                  — individual ads, optionally filtered by adset_ids
  *
  * Query params:
  *   workspace_id  – required
@@ -13,19 +13,19 @@
  *   date_from     – optional YYYY-MM-DD (default: 30 days ago)
  *   date_to       – optional YYYY-MM-DD (default: today)
  *   level         – optional: "campaign" | "adset" | "ad" (default: "campaign")
- *   campaign_id   – required when level = "adset"
- *   adset_id      – required when level = "ad"
+ *   campaign_ids  – optional comma-separated list; filters adset level
+ *   adset_ids     – optional comma-separated list; filters ad level
  */
 import { type NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/config/supabase";
 import { nextResponseFromGuard } from "@/lib/guard-response";
 import { requireAuthAndWorkspace } from "@/middleware/workspace";
+import type { Json } from "@/database.types";
 import type {
   AdsManagerLevel,
   AdsManagerPayload,
   AdsManagerRow,
   AdsManagerSummary,
-  AdsManagerBreadcrumb,
 } from "@/features/ads-manager/types";
 
 export const runtime = "nodejs";
@@ -52,9 +52,7 @@ function emptyPayload(
   level: AdsManagerLevel,
   dateFrom: string,
   dateTo: string,
-  hasLinkedAccounts: boolean,
-  campaignContext: AdsManagerBreadcrumb | null,
-  adsetContext: AdsManagerBreadcrumb | null
+  hasLinkedAccounts: boolean
 ): AdsManagerPayload {
   return {
     level,
@@ -78,8 +76,8 @@ function emptyPayload(
     date_from: dateFrom,
     date_to: dateTo,
     has_linked_accounts: hasLinkedAccounts,
-    campaign_context: campaignContext,
-    adset_context: adsetContext,
+    campaign_context: null,
+    adset_context: null,
   };
 }
 
@@ -316,22 +314,27 @@ function buildSummary(
  * @param projectId       - Scope to this project.
  * @param dateFrom        - Inclusive start date (YYYY-MM-DD) in KL timezone.
  * @param dateTo          - Inclusive end date   (YYYY-MM-DD) in KL timezone.
- * @param filterEntityId  - When level = "adset", restricts to this campaign_id.
- *                          When level = "ad",    restricts to this adset_id.
+ * @param filterEntityIds - When level = "adset", restricts to these campaign_ids.
+ *                          When level = "ad",    restricts to these adset_ids.
+ *                          Empty array = no restriction.
  */
 async function queryJourneyLeadCounts(
   level: AdsManagerLevel,
   projectId: string,
   dateFrom: string,
   dateTo: string,
-  filterEntityId: string
+  filterEntityIds: string[]
 ): Promise<{ byEntity: Map<string, number>; totalAll: number }> {
-  /** Row shape returned from the explicit three-column select below. */
+  /**
+   * Row shape returned by the explicit three-column select below.
+   * Supabase PostgREST exposes `payload->utm_campaign` under the key
+   * `utm_campaign` with type `Json`.
+   */
   type JourneyRow = {
     meta_campaign_id: string | null;
     meta_adset_id: string | null;
     meta_ad_id: string | null;
-    "payload->utm_campaign": string | null;
+    utm_campaign: Json;
   };
   type JourneyColumn = keyof Pick<
     JourneyRow,
@@ -369,8 +372,8 @@ async function queryJourneyLeadCounts(
     .gte("occurred_at", klFrom)
     .lte("occurred_at", klTo);
 
-  if (parentColumn !== null && filterEntityId !== "") {
-    baseQuery = baseQuery.eq(parentColumn, filterEntityId);
+  if (parentColumn !== null && filterEntityIds.length > 0) {
+    baseQuery = baseQuery.in(parentColumn, filterEntityIds);
   }
 
   const { data, error } = await baseQuery;
@@ -381,11 +384,11 @@ async function queryJourneyLeadCounts(
   const byEntity = new Map<string, number>();
   let totalAll = 0;
 
-  for (const row of data as JourneyRow[]) {
+  for (const row of data) {
     // Exclude rows explicitly tagged as organic — rows with null utm_campaign
     // (no UTM data at all) are still counted since they may be valid ad clicks
     // where the UTM was simply missing.
-    if (row["payload->utm_campaign"] === "organic") continue;
+    if (row.utm_campaign === "organic") continue;
     totalAll += 1;
     const id: string | null = row[idColumn];
     if (id !== null && id !== undefined) {
@@ -462,23 +465,27 @@ async function queryCampaignLevel(
 
 async function queryAdsetLevel(
   accountIds: string[],
-  campaignId: string,
+  campaignIds: string[],
   dateFrom: string,
   dateTo: string
 ): Promise<{
   insightRows: RawInsightRow[];
   metaMap: Map<string, EntityMeta>;
-  campaignContext: AdsManagerBreadcrumb | null;
 }> {
-  const { data: insights, error: insightsError } = await supabase
+  let insightsQuery = supabase
     .from("meta_adset_insights")
     .select(
       "adset_id, adset_name, campaign_id, campaign_name, spend, impressions, clicks, reach, leads, purchases, purchase_value, landing_page_views, currency"
     )
     .in("integration_account_id", accountIds)
-    .eq("campaign_id", campaignId)
     .gte("date_start", dateFrom)
     .lte("date_start", dateTo);
+
+  if (campaignIds.length > 0) {
+    insightsQuery = insightsQuery.in("campaign_id", campaignIds);
+  }
+
+  const { data: insights, error: insightsError } = await insightsQuery;
 
   if (insightsError !== null) {
     throw new Error(`meta_adset_insights query failed: ${insightsError.message}`);
@@ -524,48 +531,32 @@ async function queryAdsetLevel(
     }
   }
 
-  // Derive campaign context from the first insight row or from meta_campaigns.
-  let campaignContext: AdsManagerBreadcrumb | null = null;
-  const firstInsight = (insights ?? [])[0];
-  if (firstInsight === undefined) {
-    const { data: camp } = await supabase
-      .from("meta_campaigns")
-      .select("id, name")
-      .eq("id", campaignId)
-      .maybeSingle();
-    if (camp !== null && camp !== undefined) {
-      campaignContext = { id: camp.id, name: camp.name ?? camp.id };
-    }
-  } else {
-    campaignContext = {
-      id: firstInsight.campaign_id,
-      name: firstInsight.campaign_name ?? firstInsight.campaign_id,
-    };
-  }
-
-  return { insightRows: rawRows, metaMap, campaignContext };
+  return { insightRows: rawRows, metaMap };
 }
 
 async function queryAdLevel(
   accountIds: string[],
-  adsetId: string,
+  adsetIds: string[],
   dateFrom: string,
   dateTo: string
 ): Promise<{
   insightRows: RawInsightRow[];
   metaMap: Map<string, EntityMeta>;
-  campaignContext: AdsManagerBreadcrumb | null;
-  adsetContext: AdsManagerBreadcrumb | null;
 }> {
-  const { data: insights, error: insightsError } = await supabase
+  let insightsQuery = supabase
     .from("meta_ad_insights")
     .select(
       "ad_id, ad_name, adset_id, campaign_id, campaign_name, spend, impressions, clicks, reach, leads, purchases, purchase_value, landing_page_views, currency"
     )
     .in("integration_account_id", accountIds)
-    .eq("adset_id", adsetId)
     .gte("date_start", dateFrom)
     .lte("date_start", dateTo);
+
+  if (adsetIds.length > 0) {
+    insightsQuery = insightsQuery.in("adset_id", adsetIds);
+  }
+
+  const { data: insights, error: insightsError } = await insightsQuery;
 
   if (insightsError !== null) {
     throw new Error(`meta_ad_insights query failed: ${insightsError.message}`);
@@ -612,90 +603,36 @@ async function queryAdLevel(
   }
 
   // Derive breadcrumb context.
-  let campaignContext: AdsManagerBreadcrumb | null = null;
-  let adsetContext: AdsManagerBreadcrumb | null = null;
-  const firstInsight = (insights ?? [])[0];
+  // (Kept for payload compatibility but not used in the 3-tab UI.)
 
-  if (firstInsight !== undefined) {
-    campaignContext = {
-      id: firstInsight.campaign_id,
-      name: firstInsight.campaign_name ?? firstInsight.campaign_id,
-    };
-  }
-
-  const { data: adset } = await supabase
-    .from("meta_adsets")
-    .select("id, name, campaign_id")
-    .eq("id", adsetId)
-    .maybeSingle();
-
-  if (adset !== null && adset !== undefined) {
-    adsetContext = { id: adset.id, name: adset.name ?? adset.id };
-    if (campaignContext === null) {
-      const { data: camp } = await supabase
-        .from("meta_campaigns")
-        .select("id, name")
-        .eq("id", adset.campaign_id)
-        .maybeSingle();
-      if (camp !== null && camp !== undefined) {
-        campaignContext = { id: camp.id, name: camp.name ?? camp.id };
-      }
-    }
-  }
-
-  return { insightRows: rawRows, metaMap, campaignContext, adsetContext };
+  return { insightRows: rawRows, metaMap };
 }
 
 // ---------------------------------------------------------------------------
 // Level validation + query dispatch
 // ---------------------------------------------------------------------------
 
-/** Validates that required params are present for each level. Returns an error
- *  message string, or null if valid. */
-function validateLevelParams(
-  level: AdsManagerLevel,
-  campaignId: string,
-  adsetId: string
-): string | null {
-  if (level === "adset" && campaignId === "") {
-    return "campaign_id is required when level=adset";
-  }
-  if (level === "ad" && adsetId === "") {
-    return "adset_id is required when level=ad";
-  }
-  return null;
-}
-
 type LevelQueryResult = {
   insightRows: RawInsightRow[];
   metaMap: Map<string, EntityMeta>;
-  campaignContext: AdsManagerBreadcrumb | null;
-  adsetContext: AdsManagerBreadcrumb | null;
 };
 
 /** Dispatches to the correct level-specific query function. */
 async function dispatchLevelQuery(
   level: AdsManagerLevel,
   accountIds: string[],
-  campaignId: string,
-  adsetId: string,
+  campaignIds: string[],
+  adsetIds: string[],
   dateFrom: string,
   dateTo: string
 ): Promise<LevelQueryResult> {
   if (level === "adset") {
-    const result = await queryAdsetLevel(
-      accountIds,
-      campaignId,
-      dateFrom,
-      dateTo
-    );
-    return { ...result, adsetContext: null };
+    return queryAdsetLevel(accountIds, campaignIds, dateFrom, dateTo);
   }
   if (level === "ad") {
-    return queryAdLevel(accountIds, adsetId, dateFrom, dateTo);
+    return queryAdLevel(accountIds, adsetIds, dateFrom, dateTo);
   }
-  const result = await queryCampaignLevel(accountIds, dateFrom, dateTo);
-  return { ...result, campaignContext: null, adsetContext: null };
+  return queryCampaignLevel(accountIds, dateFrom, dateTo);
 }
 
 // ---------------------------------------------------------------------------
@@ -730,17 +667,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       level = "ad";
     }
 
-    const campaignId = sp.get("campaign_id")?.trim() ?? "";
-    const adsetId = sp.get("adset_id")?.trim() ?? "";
-
-    /* ── Validate level params ──────────────────────────────────────────────── */
-    const validationErr = validateLevelParams(level, campaignId, adsetId);
-    if (validationErr !== null) {
-      return NextResponse.json(
-        { success: false, error: validationErr },
-        { status: 400 }
-      );
-    }
+    // Accept comma-separated IDs for multi-select filtering.
+    const campaignIds = (sp.get("campaign_ids") ?? "").split(",").filter(Boolean);
+    const adsetIds = (sp.get("adset_ids") ?? "").split(",").filter(Boolean);
 
     /* ── 1. Verify at least one Meta ad account is linked ─────────────────── */
     const { data: accountLinks, error: accountLinksError } = await supabase
@@ -762,20 +691,20 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (accountLinks === null || accountLinks.length === 0) {
       return NextResponse.json({
         success: true,
-        data: emptyPayload(level, dateFrom, dateTo, false, null, null),
+        data: emptyPayload(level, dateFrom, dateTo, false),
       });
     }
 
     const accountIds = accountLinks.map((a) => a.integration_account_id);
 
     /* ── 2. Query the appropriate insight table based on level ────────────── */
-    const [{ insightRows, metaMap, campaignContext, adsetContext }, journeyData] =
+    const [{ insightRows, metaMap }, journeyData] =
       await Promise.all([
         dispatchLevelQuery(
           level,
           accountIds,
-          campaignId,
-          adsetId,
+          campaignIds,
+          adsetIds,
           dateFrom,
           dateTo
         ),
@@ -784,7 +713,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           projectId,
           dateFrom,
           dateTo,
-          level === "adset" ? campaignId : adsetId
+          level === "adset" ? campaignIds : adsetIds
         ),
       ]);
 
@@ -792,14 +721,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (insightRows.length === 0) {
       return NextResponse.json({
         success: true,
-        data: emptyPayload(
-          level,
-          dateFrom,
-          dateTo,
-          true,
-          campaignContext,
-          adsetContext
-        ),
+        data: emptyPayload(level, dateFrom, dateTo, true),
       });
     }
 
@@ -815,8 +737,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       date_from: dateFrom,
       date_to: dateTo,
       has_linked_accounts: true,
-      campaign_context: campaignContext,
-      adset_context: adsetContext,
+      campaign_context: null,
+      adset_context: null,
     };
 
     return NextResponse.json({ success: true, data: payload });

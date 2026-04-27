@@ -1,6 +1,10 @@
-import { after, type NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/config/supabase";
 import type { Database, Json } from "@/database.types";
+import {
+  loadIntegrationAccountIdsForProject,
+  resolveMetaAttributionFromUtm,
+} from "@/services/optin-meta-attribution";
 
 export const runtime = "nodejs";
 
@@ -341,7 +345,15 @@ export async function OPTIONS(): Promise<NextResponse> {
 
 /**
  * Collector for the first-party tracking pixel. Accepts a batch of events,
- * verifies the project id, and inserts rows asynchronously after the response.
+ * verifies the project id, inserts `page_events` rows synchronously, and
+ * bridges any `optin` events with a known GHL contact ID into `journey_events`
+ * so they are visible in the Ads Manager lead counts.
+ *
+ * The insert is performed synchronously (before the 200 response) because the
+ * previous `after()` implementation caused silent failures: the serverless
+ * function was terminated by the platform before the deferred callback could
+ * complete, which meant rows never reached the database despite the browser
+ * receiving a 200 OK.
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const raw = await parseBodyJson(request);
@@ -380,19 +392,90 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  after(async () => {
-    const rows: PageEventInsert[] = [];
-    for (const ev of events) {
-      const row = mapEventToInsert(siteId, sessionId, ev);
-      if (row !== null) rows.push(row);
-    }
-    if (rows.length === 0) return;
+  // Build page_events rows for all accepted, known event types.
+  const rows: PageEventInsert[] = [];
+  for (const ev of events) {
+    const row = mapEventToInsert(siteId, sessionId, ev);
+    if (row !== null) rows.push(row);
+  }
 
+  if (rows.length > 0) {
     const { error: insertError } = await supabase.from("page_events").insert(rows);
     if (insertError !== null) {
       console.error("track API page_events insert failed:", insertError.message);
     }
-  });
+  }
+
+  // Bridge optin events with a known GHL contact ID into journey_events so
+  // the Ads Manager dashboard can count first-party leads via the tracker.
+  const optinEvents = events.filter(
+    (ev) =>
+      ev.event_type === "optin" &&
+      typeof ev.ghl_contact_id === "string" &&
+      ev.ghl_contact_id.trim() !== ""
+  );
+
+  if (optinEvents.length > 0) {
+    const integrationAccountIds = await loadIntegrationAccountIdsForProject(supabase, siteId);
+
+    for (const ev of optinEvents) {
+      const contactId = (ev.ghl_contact_id as string).trim();
+
+      const attribution = integrationAccountIds.length > 0
+        ? await resolveMetaAttributionFromUtm(supabase, {
+            utmSource: ev.utm_source ?? "",
+            utmContent: ev.utm_content ?? "",
+            utmCampaign: ev.utm_campaign ?? "",
+            integrationAccountIds,
+          })
+        : {
+            meta_ad_id: null,
+            meta_adset_id: null,
+            meta_campaign_id: null,
+            method: null,
+          };
+
+      const occurredAt =
+        ev.occurred_at !== undefined && isIsoDateString(ev.occurred_at)
+          ? ev.occurred_at
+          : new Date().toISOString();
+
+      type JourneyInsert = Database["public"]["Tables"]["journey_events"]["Insert"];
+      const journeyRow: JourneyInsert = {
+        project_id: siteId,
+        contact_id: contactId,
+        event_type: "optin",
+        source_system: "tracker",
+        occurred_at: occurredAt,
+        meta_ad_id: attribution.meta_ad_id,
+        meta_adset_id: attribution.meta_adset_id,
+        meta_campaign_id: attribution.meta_campaign_id,
+        meta_attribution_method: attribution.method,
+        payload: {
+          utm_source: ev.utm_source ?? null,
+          utm_medium: ev.utm_medium ?? null,
+          utm_campaign: ev.utm_campaign ?? null,
+          utm_content: ev.utm_content ?? null,
+          utm_term: ev.utm_term ?? null,
+          url: ev.url ?? null,
+        } as Json,
+      };
+
+      const { error: journeyErr } = await supabase
+        .from("journey_events")
+        .upsert(journeyRow, {
+          onConflict: "contact_id,event_type,source_system",
+          ignoreDuplicates: false,
+        });
+
+      if (journeyErr !== null) {
+        console.error(
+          `track API journey_events upsert failed for contact=${contactId}:`,
+          journeyErr.message
+        );
+      }
+    }
+  }
 
   return NextResponse.json(
     { success: true, accepted: acceptedCount },

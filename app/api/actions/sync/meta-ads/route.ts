@@ -61,6 +61,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  // Optional lookback window in days; defaults to 90 (full history) so that
+  // a manual "Sync Now" always fetches the complete recent window.
+  const lookbackDaysRaw = parsed.body["lookback_days"];
+  const lookbackDays =
+    typeof lookbackDaysRaw === "number" && Number.isFinite(lookbackDaysRaw) && lookbackDaysRaw > 0
+      ? Math.trunc(lookbackDaysRaw)
+      : 90;
+
   const { data: projectRow, error: projectError } = await supabase
     .from("projects")
     .select("id")
@@ -84,7 +92,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const result = await syncMetaAdsForProject(projectId, supabase);
+    const result = await syncMetaAdsForProject(projectId, supabase, lookbackDays);
     return NextResponse.json({
       success: true,
       ...result,

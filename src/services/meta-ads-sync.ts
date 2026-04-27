@@ -7,8 +7,8 @@ const META_GRAPH_BASE = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
 const GRAPH_PAGE_LIMIT = "500";
 const UPSERT_CHUNK = 200;
 
-/** Rolling daily insights window (calendar days inclusive of bounds). */
-const INSIGHT_LOOKBACK_DAYS = 90;
+/** Default rolling daily insights window used for manual full syncs. */
+const DEFAULT_INSIGHT_LOOKBACK_DAYS = 90;
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -986,10 +986,16 @@ async function syncSingleAccount(
  * Syncs Meta campaigns, ad sets, ads, and daily insights (all three levels)
  * for every linked ad account on the project, then recomputes run-level spend
  * attribution.
+ *
+ * @param lookbackDays - Number of days to fetch insights for.  Defaults to
+ *   `DEFAULT_INSIGHT_LOOKBACK_DAYS` (90) for full manual syncs.  Cron jobs
+ *   and on-load incremental syncs pass a smaller value (e.g. 3) so only the
+ *   recent window is re-fetched.
  */
 export async function syncMetaAdsForProject(
   projectId: string,
-  supabaseClient: SupabaseClient<Database>
+  supabaseClient: SupabaseClient<Database>,
+  lookbackDays: number = DEFAULT_INSIGHT_LOOKBACK_DAYS
 ): Promise<SyncMetaAdsResult> {
   const { data: mappings, error: mapErr } = await supabaseClient
     .from("project_meta_ad_accounts")
@@ -1011,9 +1017,10 @@ export async function syncMetaAdsForProject(
   let adInsightRowsUpserted = 0;
   const lines: SyncMetaAdsResult["lines"] = [];
 
+  const clampedLookback = Math.max(1, Math.min(lookbackDays, DEFAULT_INSIGHT_LOOKBACK_DAYS));
   const until = new Date();
   const since = new Date(
-    until.getTime() - INSIGHT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000
+    until.getTime() - clampedLookback * 24 * 60 * 60 * 1000
   );
   const sinceStr = formatUtcDateIso(since);
   const untilStr = formatUtcDateIso(until);
@@ -1041,6 +1048,18 @@ export async function syncMetaAdsForProject(
       adsetInsightRowsUpserted += lineResult.adsetInsightRowsUpserted;
       adInsightRowsUpserted += lineResult.adInsightRowsUpserted;
       lines.push(lineResult);
+
+      // Update last_synced_at after each successful per-account sync so the
+      // dashboard can detect stale data and avoid re-fetching fresh windows.
+      const { error: updateErr } = await supabaseClient
+        .from("project_meta_ad_accounts")
+        .update({ last_synced_at: new Date().toISOString() })
+        .eq("id", m.id);
+      if (updateErr !== null) {
+        console.warn(
+          `[meta-ads-sync] Failed to update last_synced_at for mapping ${m.id}: ${updateErr.message}`
+        );
+      }
     } catch (e) {
       const msg =
         e instanceof Error ? e.message : "Unknown error during Meta sync";

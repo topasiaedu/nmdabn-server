@@ -36,13 +36,15 @@ export interface FetchAdsManagerOptions {
    */
   level?: AdsManagerLevel;
   /**
-   * Required when level = "adset" — filters adset rows to this campaign.
+   * Optional list of campaign IDs to filter adset-level results.
+   * Empty array = no filter (show all ad sets).
    */
-  campaignId?: string;
+  campaignIds?: string[];
   /**
-   * Required when level = "ad" — filters ad rows to this ad set.
+   * Optional list of adset IDs to filter ad-level results.
+   * Empty array = no filter (show all ads).
    */
-  adsetId?: string;
+  adsetIds?: string[];
 }
 
 /**
@@ -60,8 +62,8 @@ export async function fetchAdsManagerData(
     dateFrom,
     dateTo,
     level = "campaign",
-    campaignId,
-    adsetId,
+    campaignIds,
+    adsetIds,
   } = opts;
 
   const qs = new URLSearchParams({
@@ -72,11 +74,11 @@ export async function fetchAdsManagerData(
     level,
   });
 
-  if (campaignId !== undefined && campaignId !== "") {
-    qs.set("campaign_id", campaignId);
+  if (campaignIds !== undefined && campaignIds.length > 0) {
+    qs.set("campaign_ids", campaignIds.join(","));
   }
-  if (adsetId !== undefined && adsetId !== "") {
-    qs.set("adset_id", adsetId);
+  if (adsetIds !== undefined && adsetIds.length > 0) {
+    qs.set("adset_ids", adsetIds.join(","));
   }
 
   const res = await fetch(`/api/dashboard/ads-manager?${qs.toString()}`, {
