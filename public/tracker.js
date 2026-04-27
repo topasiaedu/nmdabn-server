@@ -43,6 +43,106 @@
   }
 
   // ---------------------------------------------------------------------------
+  // GHL form submission interception (XHR + fetch)
+  // ---------------------------------------------------------------------------
+  //
+  // GHL's V2 funnel forms are Vue.js components that submit via fetch or XHR
+  // to backend.leadconnectorhq.com/forms/submit (or the msgsndr.com mirror).
+  // They do NOT fire a native <form> submit event, do not dispatch
+  // hl-form-submitted on the outer window, and do not put the contact ID in
+  // the redirect URL. Intercepting the response here is the only reliable
+  // signal available in the outer page context.
+  //
+  // The patches run before GHL scripts execute (tracker.js loads async but
+  // typically first). Both XHR and fetch are patched for full coverage.
+
+  /** @param {string} url */
+  function isGhlFormUrl(url) {
+    return (
+      (url.indexOf("leadconnectorhq.com") !== -1 || url.indexOf("msgsndr.com") !== -1) &&
+      (url.indexOf("/submit") !== -1 || url.indexOf("submit?") !== -1 || url.indexOf("submit/") !== -1)
+    );
+  }
+
+  /** @param {unknown} body */
+  function extractCidFromBody(body) {
+    if (!body || typeof body !== "object") return "";
+    var b = /** @type {Record<string, unknown>} */ (body);
+    var contact = b["contact"];
+    if (contact && typeof contact === "object") {
+      var c = /** @type {Record<string, unknown>} */ (contact);
+      if (typeof c["id"] === "string") return c["id"];
+    }
+    if (typeof b["contact_id"] === "string") return b["contact_id"];
+    if (typeof b["contactId"] === "string") return b["contactId"];
+    return "";
+  }
+
+  // Patch XMLHttpRequest
+  (function () {
+    var origOpen = XMLHttpRequest.prototype.open;
+    var origSend = XMLHttpRequest.prototype.send;
+
+    XMLHttpRequest.prototype.open = function (method, url) {
+      this._nmTrackedUrl = typeof url === "string" ? url : "";
+      return origOpen.apply(this, /** @type {IArguments} */ (arguments));
+    };
+
+    XMLHttpRequest.prototype.send = function () {
+      var self = this;
+      if (isGhlFormUrl(self._nmTrackedUrl || "")) {
+        self.addEventListener("load", function () {
+          if (self.status >= 200 && self.status < 300) {
+            try {
+              var parsed = JSON.parse(self.responseText);
+              var cid = extractCidFromBody(parsed);
+              if (cid) setContactId(cid);
+            } catch (_e) { /* non-JSON response — ignore */ }
+            handleOptIn(null);
+          }
+        });
+      }
+      return origSend.apply(this, /** @type {IArguments} */ (arguments));
+    };
+  })();
+
+  // Patch fetch
+  (function () {
+    var origFetch = window.fetch;
+    window.fetch = function (resource, init) {
+      var url =
+        typeof resource === "string"
+          ? resource
+          : resource instanceof Request
+          ? resource.url
+          : resource instanceof URL
+          ? resource.href
+          : "";
+      var tracked = isGhlFormUrl(url);
+      var promise = origFetch.call(window, resource, init);
+      if (tracked) {
+        promise.then(function (res) {
+          if (res && res.ok) {
+            res
+              .clone()
+              .json()
+              .then(function (body) {
+                var cid = extractCidFromBody(body);
+                if (cid) setContactId(cid);
+                handleOptIn(null);
+              })
+              .catch(function () {
+                // Could not parse JSON — fire optin without contact ID.
+                handleOptIn(null);
+              });
+          }
+        }).catch(function () { /* network error — ignore */ });
+      }
+      return promise;
+    };
+  })();
+
+  // ---------------------------------------------------------------------------
   // Session management (localStorage)
   // ---------------------------------------------------------------------------
 
