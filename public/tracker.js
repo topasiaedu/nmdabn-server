@@ -245,6 +245,32 @@
   // Replay on this page load before registering any new listeners.
   replayPendingOptin();
 
+  // ---------------------------------------------------------------------------
+  // GHL thank-you page contact ID detection (primary optin mechanism)
+  // ---------------------------------------------------------------------------
+  //
+  // GHL redirects to the thank-you page with ?contact_id=<id> after a
+  // successful form submission. This is more reliable than listening for
+  // hl-form-submitted, which may not reach outer-page listeners when the
+  // form runs inside a GHL section / iframe context.
+  //
+  // Only fires once per new contact: if the stored CID already matches the
+  // URL param, the person is just revisiting the page (e.g. a bookmark) and
+  // we skip to avoid double-counting.
+
+  var urlCid = searchParams.get("contact_id") || searchParams.get("contactId");
+  if (urlCid && urlCid.trim() !== "") {
+    var storedCid = getContactId();
+    if (storedCid !== urlCid.trim()) {
+      setContactId(urlCid.trim());
+      // Identify first so ghl_contact_id is set before the optin event.
+      push(buildEvent("identify", { ghl_contact_id: urlCid.trim() }));
+      push(buildEvent("optin", {}));
+      // Flush immediately — do not wait for the 5-second interval.
+      flush();
+    }
+  }
+
   /**
    * Adds key to `out` only when value should be serialized (truthy strings,
    * non-null objects, or numeric 0 for coordinates / scroll_depth).
