@@ -440,6 +440,9 @@ async function upsertTrackerJourneyEvent(
     journeyErr.message
   );
 }
+
+/**
+ * Collector for the first-party tracking pixel. Accepts a batch of events,
  * verifies the project id, inserts `page_events` rows synchronously, and
  * bridges any `optin` events with a known GHL contact ID into `journey_events`
  * so they are visible in the Ads Manager lead counts.
