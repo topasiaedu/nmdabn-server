@@ -344,7 +344,102 @@ export async function OPTIONS(): Promise<NextResponse> {
 }
 
 /**
- * Collector for the first-party tracking pixel. Accepts a batch of events,
+ * Builds the payload JSON for a journey_events row, merging base UTM fields with
+ * any extra properties supplied by the caller.
+ */
+function buildJourneyPayload(
+  ev: TrackEventInput,
+  extra: Record<string, unknown> = {}
+): Json {
+  return {
+    utm_source: ev.utm_source ?? null,
+    utm_medium: ev.utm_medium ?? null,
+    utm_campaign: ev.utm_campaign ?? null,
+    utm_content: ev.utm_content ?? null,
+    utm_term: ev.utm_term ?? null,
+    url: ev.url ?? null,
+    ...extra,
+  } as Json;
+}
+
+/**
+ * Attempts to upsert a journey_events row for a tracker optin.
+ *
+ * When the initial upsert fails with a FK violation (23503 — the GHL contact
+ * hasn't been created by the webhook yet), retries with contact_id = null and
+ * stores the ghl_contact_id inside the payload JSON so it can be reconciled
+ * later. Duplicate retries are silently swallowed (23505).
+ */
+async function upsertTrackerJourneyEvent(
+  ev: TrackEventInput,
+  contactId: string,
+  siteId: string,
+  attribution: {
+    meta_ad_id: string | null;
+    meta_adset_id: string | null;
+    meta_campaign_id: string | null;
+    method: string | null;
+  }
+): Promise<void> {
+  const occurredAt =
+    ev.occurred_at !== undefined && isIsoDateString(ev.occurred_at)
+      ? ev.occurred_at
+      : new Date().toISOString();
+
+  type JourneyInsert = Database["public"]["Tables"]["journey_events"]["Insert"];
+
+  const journeyRow: JourneyInsert = {
+    project_id: siteId,
+    contact_id: contactId,
+    event_type: "optin",
+    source_system: "tracker",
+    occurred_at: occurredAt,
+    meta_ad_id: attribution.meta_ad_id,
+    meta_adset_id: attribution.meta_adset_id,
+    meta_campaign_id: attribution.meta_campaign_id,
+    meta_attribution_method: attribution.method,
+    payload: buildJourneyPayload(ev),
+  };
+
+  const { error: journeyErr } = await supabase
+    .from("journey_events")
+    .upsert(journeyRow, {
+      onConflict: "contact_id,event_type,source_system",
+      ignoreDuplicates: false,
+    });
+
+  if (journeyErr === null) return;
+
+  // 23503 = foreign_key_violation: contact not yet in ghl_contacts (tracker
+  // fires before GHL's webhook creates the record). Retry with contact_id = null
+  // so the optin is still counted with full Meta attribution. The ghl_contact_id
+  // is preserved in the payload for future reconciliation.
+  if (journeyErr.code === "23503") {
+    const pendingRow: JourneyInsert = {
+      ...journeyRow,
+      contact_id: null,
+      payload: buildJourneyPayload(ev, { ghl_contact_id: contactId }),
+    };
+    const { error: retryErr } = await supabase
+      .from("journey_events")
+      .insert(pendingRow);
+
+    // 23505 = unique_violation: duplicate tracker optin for the same
+    // ghl_contact_id (keepalive + localStorage replay both landed). Expected.
+    if (retryErr !== null && retryErr.code !== "23505") {
+      console.error(
+        `track API journey_events fallback insert failed for contact=${contactId}:`,
+        retryErr.message
+      );
+    }
+    return;
+  }
+
+  console.error(
+    `track API journey_events upsert failed for contact=${contactId}:`,
+    journeyErr.message
+  );
+}
  * verifies the project id, inserts `page_events` rows synchronously, and
  * bridges any `optin` events with a known GHL contact ID into `journey_events`
  * so they are visible in the Ads Manager lead counts.
@@ -435,45 +530,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             method: null,
           };
 
-      const occurredAt =
-        ev.occurred_at !== undefined && isIsoDateString(ev.occurred_at)
-          ? ev.occurred_at
-          : new Date().toISOString();
-
-      type JourneyInsert = Database["public"]["Tables"]["journey_events"]["Insert"];
-      const journeyRow: JourneyInsert = {
-        project_id: siteId,
-        contact_id: contactId,
-        event_type: "optin",
-        source_system: "tracker",
-        occurred_at: occurredAt,
-        meta_ad_id: attribution.meta_ad_id,
-        meta_adset_id: attribution.meta_adset_id,
-        meta_campaign_id: attribution.meta_campaign_id,
-        meta_attribution_method: attribution.method,
-        payload: {
-          utm_source: ev.utm_source ?? null,
-          utm_medium: ev.utm_medium ?? null,
-          utm_campaign: ev.utm_campaign ?? null,
-          utm_content: ev.utm_content ?? null,
-          utm_term: ev.utm_term ?? null,
-          url: ev.url ?? null,
-        } as Json,
-      };
-
-      const { error: journeyErr } = await supabase
-        .from("journey_events")
-        .upsert(journeyRow, {
-          onConflict: "contact_id,event_type,source_system",
-          ignoreDuplicates: false,
-        });
-
-      if (journeyErr !== null) {
-        console.error(
-          `track API journey_events upsert failed for contact=${contactId}:`,
-          journeyErr.message
-        );
-      }
+      await upsertTrackerJourneyEvent(ev, contactId, siteId, attribution);
     }
   }
 

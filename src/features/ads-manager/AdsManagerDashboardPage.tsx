@@ -893,12 +893,21 @@ function AdsManagerContent({ ctx }: AdsManagerContentProps): React.ReactElement 
     [accessToken, workspaceId, projectId]
   );
 
-  /** Load all 3 tabs in parallel. Called on mount and date changes. */
+  /**
+   * Load all 3 tabs in parallel, respecting the current campaign/adset selections.
+   * Campaigns always load without a filter; adsets filter by campaignIds; ads filter
+   * by adsetIds (or show all when both are empty).
+   */
   const loadAllTabs = useCallback(
-    (from: string, to: string): void => {
+    (
+      from: string,
+      to: string,
+      campaignIds: string[] = [],
+      adsetIds: string[] = []
+    ): void => {
       void loadTab("campaign", from, to, [], [], setCampaigns);
-      void loadTab("adset", from, to, [], [], setAdsets);
-      void loadTab("ad", from, to, [], [], setAds);
+      void loadTab("adset", from, to, campaignIds, [], setAdsets);
+      void loadTab("ad", from, to, [], adsetIds, setAds);
     },
     [loadTab]
   );
@@ -974,13 +983,12 @@ function AdsManagerContent({ ctx }: AdsManagerContentProps): React.ReactElement 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Reload all tabs when date range changes; also reset selections.
+  // Reload all tabs when date range changes; preserve existing selections so the
+  // marketer doesn't have to re-select campaigns/adsets after adjusting the date.
   function handleDateApply(from: string, to: string): void {
     setDateFrom(from);
     setDateTo(to);
-    setSelectedCampaignIds(new Set());
-    setSelectedAdsetIds(new Set());
-    loadAllTabs(from, to);
+    loadAllTabs(from, to, [...selectedCampaignIds], [...selectedAdsetIds]);
   }
 
   // When campaign selection changes, re-fetch adsets (filtered) and ads (unfiltered).
@@ -1000,7 +1008,7 @@ function AdsManagerContent({ ctx }: AdsManagerContentProps): React.ReactElement 
   }, [selectedAdsetIds]);
 
   function handleSyncComplete(): void {
-    loadAllTabs(dateFrom, dateTo);
+    loadAllTabs(dateFrom, dateTo, [...selectedCampaignIds], [...selectedAdsetIds]);
     setLastSyncedAt(new Date());
   }
 
