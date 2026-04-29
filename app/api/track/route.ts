@@ -401,14 +401,26 @@ async function upsertTrackerJourneyEvent(
     payload: buildJourneyPayload(ev),
   };
 
+  // Use INSERT (not upsert) because the only unique constraint that covers
+  // this row is the PARTIAL index idx_journey_events_contact_optin_tracker
+  // (WHERE contact_id IS NOT NULL …). PostgreSQL rejects an ON CONFLICT clause
+  // that cannot be matched to a full unique constraint or index — error 42P10 —
+  // so a plain upsert with onConflict on these columns silently fails.
+  //
+  // Duplicate protection is handled per-code below:
+  //   23503 = FK violation → contact not yet in ghl_contacts → retry with null
+  //   23505 = unique violation → duplicate tracker event → silently ignore
   const { error: journeyErr } = await supabase
     .from("journey_events")
-    .upsert(journeyRow, {
-      onConflict: "contact_id,event_type,source_system",
-      ignoreDuplicates: false,
-    });
+    .insert(journeyRow);
 
+  // Happy path — row inserted successfully.
   if (journeyErr === null) return;
+
+  // 23505 = unique_violation: duplicate for an existing contact (partial index
+  // idx_journey_events_contact_optin_tracker fired). Keepalive + localStorage
+  // replay can both land for the same session — expected, ignore.
+  if (journeyErr.code === "23505") return;
 
   // 23503 = foreign_key_violation: contact not yet in ghl_contacts (tracker
   // fires before GHL's webhook creates the record). Retry with contact_id = null
@@ -424,8 +436,8 @@ async function upsertTrackerJourneyEvent(
       .from("journey_events")
       .insert(pendingRow);
 
-    // 23505 = unique_violation: duplicate tracker optin for the same
-    // ghl_contact_id (keepalive + localStorage replay both landed). Expected.
+    // 23505 = duplicate null-contact row (idx_journey_events_optin_tracker_pending
+    // fired). Replay arrived after the keepalive already landed — ignore.
     if (retryErr !== null && retryErr.code !== "23505") {
       console.error(
         `track API journey_events fallback insert failed for contact=${contactId}:`,
@@ -436,7 +448,7 @@ async function upsertTrackerJourneyEvent(
   }
 
   console.error(
-    `track API journey_events upsert failed for contact=${contactId}:`,
+    `track API journey_events insert failed for contact=${contactId}:`,
     journeyErr.message
   );
 }
